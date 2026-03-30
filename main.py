@@ -309,9 +309,24 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
             parse_mode="Markdown")
         return ConversationHandler.END
 
-    thinking_msg = await update.message.reply_text("🔭 計算中，請稍候...")
+    cancel_keyboard = InlineKeyboardMarkup([[
+    InlineKeyboardButton("❌ 取消", callback_data="cancel")
+]])
+thinking_msg = await update.message.reply_text(
+    "🔭 計算中，請稍候...",
+    reply_markup=cancel_keyboard
+)
+context.user_data["thinking_msg_id"] = thinking_msg.message_id
+context.user_data["cancelled"] = False
     try:
+        if context.user_data.get("cancelled"):
+            return ConversationHandler.END
+
         result = run_query(text)
+
+        if context.user_data.get("cancelled"):
+            return ConversationHandler.END
+
         reply  = generate_reply(result)
         user_last_query[chat_id] = text
         log_query(username, user_id, text, result["intent"])
@@ -335,7 +350,10 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     data     = query.data
     last_q   = user_last_query.get(chat_id, "")
     await query.answer()
-
+    if data == "cancel":
+        context.user_data["cancelled"] = True
+        await query.edit_message_text("❌ 已取消查詢")
+        return ConversationHandler.END
     if data == "rate_good":
         log_feedback(username, user_id, last_q, "👍", "評分")
         await query.edit_message_reply_markup(reply_markup=None)
