@@ -490,4 +490,10 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    import time
+    while True:
+        try:
+            asyncio.run(main())
+        except Exception as e:
+            print(f"[重啟] Bot 崩潰：{e}，5 秒後重啟...", flush=True)
+            time.sleep(5)
