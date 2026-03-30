@@ -1,0 +1,4 @@
+skyfield
+requests
+anthropic
+python-telegram-bot

@@ -1,0 +1,11 @@
+services:
+  - type: worker
+    name: astro-bot
+    runtime: python
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
