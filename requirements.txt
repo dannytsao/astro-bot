@@ -2,3 +2,5 @@ skyfield
 requests
 anthropic
 python-telegram-bot
+gspread
+google-auth
