@@ -4,21 +4,19 @@ from skyfield.api import Star, wgs84, load
 from skyfield import almanac
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
+from telegram.request import HTTPXRequest
 import anthropic
 import os
 
-# ── 從環境變數讀取 Key（部署用）────────────────────────────────
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_BOT_TOKEN")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
-logging.basicConfig(level=logging.WARNING)
+logging.basicConfig(level=logging.ERROR)
 
-# ── 載入星曆表 ────────────────────────────────────────────────
 ts  = load.timescale()
 eph = load("de421.bsp")
 
-# ── 標的庫 ────────────────────────────────────────────────────
 TARGET_LIBRARY = [
     {"name": "銀河核心",          "ra_hours": 17.761, "dec_degrees": -29.0,  "type": "galaxy",        "min_alt": 15, "max_alt": 60},
     {"name": "獵戶座",            "ra_hours": 84.05/15,"dec_degrees": -1.20,  "type": "constellation", "min_alt": 10, "max_alt": 50},
@@ -45,7 +43,6 @@ METEOR_SHOWERS = [
 ]
 
 
-# ── 天文計算函式 ──────────────────────────────────────────────
 def get_moon_phase_emoji(phase_fraction):
     p = phase_fraction % 1.0
     if p < 0.03 or p > 0.97: return "🌑 新月（最佳拍攝）"
@@ -68,7 +65,7 @@ def check_meteor_shower(query_date):
 
 
 def compute_target_windows(observer, target, query_dates):
-    star    = Star(ra_hours=target["ra_hours"], dec_degrees=target["dec_degrees"])
+    star = Star(ra_hours=target["ra_hours"], dec_degrees=target["dec_degrees"])
     windows = []
     for d in query_dates:
         for minute_offset in range(0, 10 * 60, 10):
@@ -162,7 +159,6 @@ def check_weather_multi(lat, lon, query_dates):
     return daily
 
 
-# ── LLM 函式 ──────────────────────────────────────────────────
 def parse_intent(user_query: str) -> dict:
     today_str = date.today().isoformat()
     system = f"""你是天文攝影查詢系統的意圖解析器。今天是 {today_str}。
@@ -277,11 +273,10 @@ def generate_reply(result: dict) -> str:
     return resp.content[0].text
 
 
-# ── Telegram Bot ──────────────────────────────────────────────
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text     = update.message.text.strip()
     username = update.effective_user.first_name or "朋友"
-    print(f"[收到] {username}: {text}")
+    print(f"[收到] {username}: {text}", flush=True)
 
     if text in ["/start", "/help", "help", "說明"]:
         await update.message.reply_text(
@@ -301,25 +296,46 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         reply  = generate_reply(result)
         await thinking_msg.delete()
         await update.message.reply_text(reply, parse_mode="Markdown")
-        print(f"[回覆] 完成")
+        print(f"[回覆] 完成", flush=True)
     except Exception as e:
         await thinking_msg.delete()
         await update.message.reply_text(
             f"⚠️ 發生錯誤，請重新嘗試。\n\n`{type(e).__name__}: {e}`",
             parse_mode="Markdown"
         )
-        print(f"[錯誤] {type(e).__name__}: {e}")
+        print(f"[錯誤] {type(e).__name__}: {e}", flush=True)
 
 
 async def main():
-    app = Application.builder().token(TELEGRAM_TOKEN).build()
+    request = HTTPXRequest(
+        connection_pool_size=8,
+        read_timeout=30,
+        write_timeout=30,
+        connect_timeout=30,
+        pool_timeout=30,
+    )
+
+    app = (Application.builder()
+           .token(TELEGRAM_TOKEN)
+           .request(request)
+           .build())
+
     app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
     app.add_handler(MessageHandler(filters.COMMAND, handle_message))
-    print("🚀 Bot 啟動中...")
+
+    print("🚀 Bot 啟動中...", flush=True)
+
     async with app:
         await app.initialize()
         await app.start()
-        await app.updater.start_polling(allowed_updates=Update.ALL_TYPES)
+        await app.updater.start_polling(
+            allowed_updates=Update.ALL_TYPES,
+            drop_pending_updates=True,
+            read_timeout=30,
+            write_timeout=30,
+            connect_timeout=30,
+            pool_timeout=30,
+        )
         try:
             while True:
                 await asyncio.sleep(1)
