@@ -615,7 +615,9 @@ def match_targets(target_names):
             if name.lower() in t["name"].lower() or t["name"].lower() in name.lower():
                 if t not in matched:
                     matched.append(t)
-    return matched if matched else TARGET_LIBRARY
+    # ★ Bug #2 修正：找不到時回傳空陣列，不 fallback 整個標的庫
+    # 避免未知天體（如 C/2026 A1）觸發全庫計算導致卡死
+    return matched
 
 
 # ── ★ 超出範圍偵測 ────────────────────────────────────────────
@@ -673,8 +675,8 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
     }
 
 
-def run_query(user_query):
-    intent    = parse_intent(user_query)
+def run_query(user_query, prefetched_intent=None):
+    intent    = prefetched_intent if prefetched_intent else parse_intent(user_query)
     observer  = wgs84.latlon(intent["lat"], intent["lon"])
     date_start = date.fromisoformat(intent["date_start"])
     date_end   = date.fromisoformat(intent["date_end"])
@@ -710,6 +712,11 @@ def run_query(user_query):
 
     good = [w for w in all_windows if w.get("good_weather", False)]
 
+    # ★ Bug #5 修正：判斷是否所有查詢日期都超出氣象預報範圍
+    today = date.today()
+    max_forecast = today + timedelta(days=15)
+    all_windows_out_of_range = all(d > max_forecast for d in query_dates)
+
     # ★ 計算銀河構圖方位（取第一天有暗空窗口的結果）
     mw_composition_by_date = {}
     for m in moon_info:
@@ -723,7 +730,8 @@ def run_query(user_query):
         "good_windows": good[:10],
         "moon_info":   moon_info,
         "showers":     showers,
-        "mw_composition_by_date": mw_composition_by_date,  # ★ 新增
+        "mw_composition_by_date":    mw_composition_by_date,
+        "all_windows_out_of_range":  all_windows_out_of_range,  # ★ Bug #5
     }
 
 
@@ -741,7 +749,6 @@ def generate_reply(result):
     moon_info = result["moon_info"]
     showers  = result["showers"]
     mw_comp  = result["mw_composition_by_date"]
-
     # ── 送給 LLM 的資料 ─────────────────────────────────────
     ws = json.dumps([{
         "標的":    w["target_name"],
@@ -792,6 +799,13 @@ def generate_reply(result):
         "ZHR": s["zenithal_hourly_rate"]
     } for s in showers], ensure_ascii=False) if showers else "無"
 
+    # ★ Bug #5 修正：偵測是否所有日期都超出氣象預報範圍
+    all_windows_out = result.get("all_windows_out_of_range", False)
+    forecast_warning = (
+        "\n\n⚠️ *氣象預報說明*：查詢日期超出預報範圍（僅支援未來 15 天），"
+        "氣象資料不可用，天文計算結果仍供參考。"
+    ) if all_windows_out else ""
+
     # ── LLM Prompt ──────────────────────────────────────────
     system = """你是專業天文攝影顧問，熟悉台灣各地拍攝環境。繁體中文，親切專業。
 
@@ -831,7 +845,7 @@ def generate_reply(result):
             f"流星雨：{ss}"
         }]
     )
-    return resp.content[0].text
+    return resp.content[0].text + forecast_warning
 
 
 # ── 對話狀態 ──────────────────────────────────────────────────
@@ -886,13 +900,38 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("cancelled"):
             return ConversationHandler.END
 
-        result = run_query(text)
+        # ★ Bug #1 #3 修正：先解析意圖，立即攔截完全不支援的查詢
+        #    不進入 run_query()，避免給出錯誤答案或浪費計算資源
+        intent_for_check = parse_intent(text)
+        scope = check_unsupported(text, intent_for_check)
+
+        if scope["has_unsupported"]:
+            # 完全不支援 → 直接知會，不跑天文計算
+            labels = "、".join(scope["unsupported_labels"])
+            notice = (
+                f"⚠️ *目前版本尚不支援：{labels}*\n\n"
+                f"很抱歉，這個查詢超出目前的功能範圍。\n"
+                f"想把這個需求加入許願池，讓我們優先開發嗎？"
+            )
+            context.user_data["wish_auto_text"] = scope["wish_text"]
+            user_last_query[chat_id] = text
+            await thinking_msg.delete()
+            await update.message.reply_text(
+                notice,
+                parse_mode="Markdown",
+                reply_markup=make_unsupported_keyboard()
+            )
+            print(f"[攔截] 不支援查詢：{labels}", flush=True)
+            return ConversationHandler.END
+
+        # ★ Bug #2 修正：未知彗星在 check_unsupported 階段會被 has_comet_warning 標記
+        #    但如果是完全未知的彗星名稱（不含支援關鍵字），
+        #    match_targets() 返回空陣列而非整個標的庫（見 match_targets 修正）
+
+        result = run_query(text, prefetched_intent=intent_for_check)
 
         if context.user_data.get("cancelled"):
             return ConversationHandler.END
-
-        # ★ 超出範圍偵測
-        scope = check_unsupported(text, result["intent"])
 
         reply = generate_reply(result)
 
@@ -904,21 +943,8 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
         await thinking_msg.delete()
 
-        # ★ 完全不支援的天體：先回覆現有資訊，再附上知會＋許願按鈕
-        if scope["has_unsupported"]:
-            labels = "、".join(scope["unsupported_labels"])
-            notice = (
-                f"\n\n⚠️ *目前版本尚不支援：{labels}*\n"
-                f"想把這個需求加入許願池，讓我們優先開發嗎？"
-            )
-            context.user_data["wish_auto_text"] = scope["wish_text"]
-            await update.message.reply_text(
-                reply + notice,
-                parse_mode="Markdown",
-                reply_markup=make_unsupported_keyboard()
-            )
-        # ★ 彗星警告：附在回覆後面，使用一般反饋按鈕
-        elif scope["has_comet_warning"]:
+        # ★ 彗星警告：無論天候好壞都附上（Bug #4 修正移至 generate_reply）
+        if scope["has_comet_warning"]:
             comet_notice = (
                 "\n\n⚠️ *彗星座標說明*：目前使用近似固定座標，不反映每日實際位置，"
                 "僅供參考。如需即時座標，歡迎加入許願池催促我們升級！"
