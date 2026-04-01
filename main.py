@@ -618,6 +618,61 @@ def match_targets(target_names):
     return matched if matched else TARGET_LIBRARY
 
 
+# ── ★ 超出範圍偵測 ────────────────────────────────────────────
+
+# 不支援的天體關鍵字 → (類型標籤, 知會說明)
+UNSUPPORTED_KEYWORDS = {
+    # 行星
+    "水星": ("planet", "行星位置"),
+    "金星": ("planet", "行星位置"),
+    "火星": ("planet", "行星位置"),
+    "木星": ("planet", "行星位置"),
+    "土星": ("planet", "行星位置"),
+    "天王星": ("planet", "行星位置"),
+    "海王星": ("planet", "行星位置"),
+    "planet": ("planet", "行星位置"),
+    # 日食月食
+    "日食": ("eclipse", "日食／月食預測"),
+    "月食": ("eclipse", "日食／月食預測"),
+    "日蝕": ("eclipse", "日食／月食預測"),
+    "月蝕": ("eclipse", "日食／月食預測"),
+    "eclipse": ("eclipse", "日食／月食預測"),
+}
+
+# 彗星查詢：支援但座標為近似值
+COMET_KEYWORDS = ["彗星", "comet", "atlas", "紫金山"]
+
+def check_unsupported(user_query: str, intent: dict) -> dict:
+    """
+    分析查詢是否包含超出支援範圍的天體。
+    回傳：
+      {
+        "has_unsupported": bool,       # 完全不支援（行星/日食月食）
+        "has_comet_warning": bool,     # 有支援但座標為近似值（彗星）
+        "unsupported_labels": [str],   # 不支援的功能名稱列表
+        "wish_text": str,              # 自動填入許願池的內容
+      }
+    """
+    query_lower = user_query.lower()
+    targets_lower = [t.lower() for t in intent.get("targets", [])]
+    all_text = query_lower + " " + " ".join(targets_lower)
+
+    unsupported_labels = []
+    for keyword, (ktype, label) in UNSUPPORTED_KEYWORDS.items():
+        if keyword in all_text:
+            if label not in unsupported_labels:
+                unsupported_labels.append(label)
+
+    has_comet_warning = any(kw in all_text for kw in COMET_KEYWORDS)
+
+    return {
+        "has_unsupported":    len(unsupported_labels) > 0,
+        "has_comet_warning":  has_comet_warning,
+        "unsupported_labels": unsupported_labels,
+        "wish_text":          f"希望支援：{'、'.join(unsupported_labels)}（原始查詢：{user_query}）",
+    }
+
+
 def run_query(user_query):
     intent    = parse_intent(user_query)
     observer  = wgs84.latlon(intent["lat"], intent["lon"])
@@ -791,6 +846,13 @@ def make_feedback_keyboard():
         [InlineKeyboardButton("💡 許願 / 建議", callback_data="wish")],
     ])
 
+def make_unsupported_keyboard():
+    """超出範圍查詢的許願按鈕"""
+    return InlineKeyboardMarkup([
+        [InlineKeyboardButton("💡 加入許願池", callback_data="wish_auto"),
+         InlineKeyboardButton("略過", callback_data="wish_skip")],
+    ])
+
 async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     text     = update.message.text.strip()
     username = update.effective_user.first_name or "朋友"
@@ -829,6 +891,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         if context.user_data.get("cancelled"):
             return ConversationHandler.END
 
+        # ★ 超出範圍偵測
+        scope = check_unsupported(text, result["intent"])
+
         reply = generate_reply(result)
 
         if context.user_data.get("cancelled"):
@@ -838,11 +903,39 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
         log_query(username, user_id, text, result["intent"])
 
         await thinking_msg.delete()
-        await update.message.reply_text(
-            reply,
-            parse_mode="Markdown",
-            reply_markup=make_feedback_keyboard()
-        )
+
+        # ★ 完全不支援的天體：先回覆現有資訊，再附上知會＋許願按鈕
+        if scope["has_unsupported"]:
+            labels = "、".join(scope["unsupported_labels"])
+            notice = (
+                f"\n\n⚠️ *目前版本尚不支援：{labels}*\n"
+                f"想把這個需求加入許願池，讓我們優先開發嗎？"
+            )
+            context.user_data["wish_auto_text"] = scope["wish_text"]
+            await update.message.reply_text(
+                reply + notice,
+                parse_mode="Markdown",
+                reply_markup=make_unsupported_keyboard()
+            )
+        # ★ 彗星警告：附在回覆後面，使用一般反饋按鈕
+        elif scope["has_comet_warning"]:
+            comet_notice = (
+                "\n\n⚠️ *彗星座標說明*：目前使用近似固定座標，不反映每日實際位置，"
+                "僅供參考。如需即時座標，歡迎加入許願池催促我們升級！"
+            )
+            context.user_data["wish_auto_text"] = scope["wish_text"]
+            await update.message.reply_text(
+                reply + comet_notice,
+                parse_mode="Markdown",
+                reply_markup=make_feedback_keyboard()
+            )
+        else:
+            await update.message.reply_text(
+                reply,
+                parse_mode="Markdown",
+                reply_markup=make_feedback_keyboard()
+            )
+
         print("[回覆] 完成", flush=True)
 
     except Exception as e:
@@ -885,6 +978,17 @@ async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_reply_markup(reply_markup=None)
         await query.message.reply_text("💡 請說說你的建議或想新增的功能，直接輸入文字就好：")
         return WAITING_WISH
+    elif data == "wish_auto":
+        # 自動許願：直接用 context 裡預存的文字記錄，不需用戶再輸入
+        wish_text = context.user_data.get("wish_auto_text", last_q)
+        log_feedback(username, user_id, last_q, "💡", "許願（自動）", wish_text)
+        await query.edit_message_reply_markup(reply_markup=None)
+        await query.message.reply_text("💡 已加入許願池！謝謝你的支持，我們會優先考慮開發 🙏")
+        print(f"[許願-自動] {username}: {wish_text}", flush=True)
+        return ConversationHandler.END
+    elif data == "wish_skip":
+        await query.edit_message_reply_markup(reply_markup=None)
+        return ConversationHandler.END
 
     return ConversationHandler.END
 
