@@ -632,25 +632,39 @@ UNSUPPORTED_KEYWORDS = {
     "土星": ("planet", "行星位置"),
     "天王星": ("planet", "行星位置"),
     "海王星": ("planet", "行星位置"),
+    "冥王星": ("planet", "行星位置"),
     "planet": ("planet", "行星位置"),
-    # 日食月食
+    "大距": ("planet", "行星位置"),       # 水星西大距、東大距
+    "衝":   ("planet", "行星位置"),       # 木星衝、火星衝
+    "合":   ("planet", "行星位置"),       # 行星合月
+    "凌日": ("planet", "行星位置"),       # 金星凌日、水星凌日
+    # 日食月食（含各種口語說法）
     "日食": ("eclipse", "日食／月食預測"),
     "月食": ("eclipse", "日食／月食預測"),
     "日蝕": ("eclipse", "日食／月食預測"),
     "月蝕": ("eclipse", "日食／月食預測"),
+    "全食": ("eclipse", "日食／月食預測"),   # 月全食、日全食
+    "偏食": ("eclipse", "日食／月食預測"),   # 月偏食、日偏食
+    "環食": ("eclipse", "日食／月食預測"),   # 日環食
+    "食既": ("eclipse", "日食／月食預測"),
+    "生光": ("eclipse", "日食／月食預測"),
     "eclipse": ("eclipse", "日食／月食預測"),
 }
 
-# 彗星查詢：支援但座標為近似值
+# 彗星查詢：支援但座標為近似值（已知彗星）
 COMET_KEYWORDS = ["彗星", "comet", "atlas", "紫金山"]
+
+# 未知彗星 IAU 命名格式（如 C/2026 A1、P/2025 R3）
+import re as _re
+UNKNOWN_COMET_PATTERN = _re.compile(r'\b[CPDXIcp]/\d{4}\b', _re.IGNORECASE)
 
 def check_unsupported(user_query: str, intent: dict) -> dict:
     """
     分析查詢是否包含超出支援範圍的天體。
     回傳：
       {
-        "has_unsupported": bool,       # 完全不支援（行星/日食月食）
-        "has_comet_warning": bool,     # 有支援但座標為近似值（彗星）
+        "has_unsupported": bool,       # 完全不支援（行星/日食月食/未知彗星）
+        "has_comet_warning": bool,     # 有支援但座標為近似值（已知彗星）
         "unsupported_labels": [str],   # 不支援的功能名稱列表
         "wish_text": str,              # 自動填入許願池的內容
       }
@@ -665,7 +679,17 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
             if label not in unsupported_labels:
                 unsupported_labels.append(label)
 
-    has_comet_warning = any(kw in all_text for kw in COMET_KEYWORDS)
+    # ★ 未知彗星偵測：IAU 命名格式（C/2026 A1、P/2025 R3 等）
+    # 若符合格式但不是已知支援的彗星 → 視為不支援
+    unknown_comet_match = UNKNOWN_COMET_PATTERN.search(user_query)
+    is_known_comet = any(kw in all_text for kw in ["紫金山", "atlas"])
+    if unknown_comet_match and not is_known_comet:
+        comet_name = unknown_comet_match.group(0)
+        label = f"彗星即時座標（{comet_name}）"
+        if label not in unsupported_labels:
+            unsupported_labels.append(label)
+
+    has_comet_warning = any(kw in all_text for kw in COMET_KEYWORDS) and not unknown_comet_match
 
     return {
         "has_unsupported":    len(unsupported_labels) > 0,
