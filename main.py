@@ -749,6 +749,10 @@ def run_query(user_query, prefetched_intent=None):
         if comp:
             mw_composition_by_date[d] = comp
 
+    # 直接計算平均雲量（不依賴天文窗口）
+    cloud_values = [v["cloud_cover"] for v in weather.values() if v.get("cloud_cover", -1) >= 0]
+    avg_cloud_cover = round(sum(cloud_values) / len(cloud_values), 1) if cloud_values else -1
+
     return {
         "intent":      intent,
         "good_windows": good[:10],
@@ -757,6 +761,7 @@ def run_query(user_query, prefetched_intent=None):
         "showers":     showers,
         "mw_composition_by_date":    mw_composition_by_date,
         "all_windows_out_of_range":  all_windows_out_of_range,
+        "avg_cloud_cover":           avg_cloud_cover,
     }
 
 
@@ -826,23 +831,18 @@ def generate_reply(result):
 
     # ── ★ 氣象狀態評估（第一道篩選）────────────────────────────
     all_windows_out = result.get("all_windows_out_of_range", False)
-
-    # 從 good_windows 和 all_windows 判斷氣象條件
-    all_windows = result.get("all_windows", [])
+    avg_cloud = result.get("avg_cloud_cover", -1)
 
     if all_windows_out:
-        weather_status = "out_of_range"   # 超出預報範圍
-    elif not good and all_windows:
-        # 有天文窗口但全被雲量篩掉 → 壞天氣
-        avg_cloud = sum(w.get("cloud_cover", 0) for w in all_windows if w.get("cloud_cover", -1) >= 0)
-        count = sum(1 for w in all_windows if w.get("cloud_cover", -1) >= 0)
-        avg = avg_cloud / count if count > 0 else 0
-        weather_status = "bad" if avg > 80 else "unstable"
-    elif good:
-        avg_cloud = sum(w.get("cloud_cover", 0) for w in good) / len(good)
-        weather_status = "good" if avg_cloud <= 40 else "unstable"
-    else:
+        weather_status = "out_of_range"
+    elif avg_cloud < 0:
         weather_status = "unknown"
+    elif avg_cloud > 80:
+        weather_status = "bad"
+    elif avg_cloud > 40:
+        weather_status = "unstable"
+    else:
+        weather_status = "good"
 
     # ── ★ 動態 system prompt（依氣象狀態調整）──────────────────
     if weather_status == "out_of_range":
