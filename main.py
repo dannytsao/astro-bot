@@ -636,7 +636,7 @@ UNSUPPORTED_KEYWORDS = {
     "planet": ("planet", "行星位置"),
     "大距": ("planet", "行星位置"),       # 水星西大距、東大距
     "衝":   ("planet", "行星位置"),       # 木星衝、火星衝
-    "合月": ("planet", "行星位置"),       # 行星合月
+    "合":   ("planet", "行星位置"),       # 行星合月
     "凌日": ("planet", "行星位置"),       # 金星凌日、水星凌日
     # 日食月食（含各種口語說法）
     "日食": ("eclipse", "日食／月食預測"),
@@ -752,10 +752,11 @@ def run_query(user_query, prefetched_intent=None):
     return {
         "intent":      intent,
         "good_windows": good[:10],
+        "all_windows":  all_windows,           # ★ 新增，供氣象狀態評估
         "moon_info":   moon_info,
         "showers":     showers,
         "mw_composition_by_date":    mw_composition_by_date,
-        "all_windows_out_of_range":  all_windows_out_of_range,  # ★ Bug #5
+        "all_windows_out_of_range":  all_windows_out_of_range,
     }
 
 
@@ -823,53 +824,103 @@ def generate_reply(result):
         "ZHR": s["zenithal_hourly_rate"]
     } for s in showers], ensure_ascii=False) if showers else "無"
 
-    # ★ Bug #5 修正：偵測是否所有日期都超出氣象預報範圍
+    # ── ★ 氣象狀態評估（第一道篩選）────────────────────────────
     all_windows_out = result.get("all_windows_out_of_range", False)
-    forecast_warning = (
-        "\n\n⚠️ *氣象預報說明*：查詢日期超出預報範圍（僅支援未來 15 天），"
-        "氣象資料不可用，天文計算結果仍供參考。"
-    ) if all_windows_out else ""
 
-    # ── LLM Prompt ──────────────────────────────────────────
-    system = """你是專業天文攝影顧問，熟悉台灣各地拍攝環境。繁體中文，親切專業。
+    # 從 good_windows 和 all_windows 判斷氣象條件
+    all_windows = result.get("all_windows", [])
 
-回覆格式（嚴格依照以下六個區塊，每區塊標題用【】）：
+    if all_windows_out:
+        weather_status = "out_of_range"   # 超出預報範圍
+    elif not good and all_windows:
+        # 有天文窗口但全被雲量篩掉 → 壞天氣
+        avg_cloud = sum(w.get("cloud_cover", 0) for w in all_windows if w.get("cloud_cover", -1) >= 0)
+        count = sum(1 for w in all_windows if w.get("cloud_cover", -1) >= 0)
+        avg = avg_cloud / count if count > 0 else 0
+        weather_status = "bad" if avg > 80 else "unstable"
+    elif good:
+        avg_cloud = sum(w.get("cloud_cover", 0) for w in good) / len(good)
+        weather_status = "good" if avg_cloud <= 40 else "unstable"
+    else:
+        weather_status = "unknown"
 
-【結論】最佳選擇一句話
+    # ── ★ 動態 system prompt（依氣象狀態調整）──────────────────
+    if weather_status == "out_of_range":
+        weather_instruction = """
+⚠️ 氣象資料不可用（查詢日期超出預報範圍 15 天）。
+規則：
+- 【結論】只能基於天文條件（月相、暗空窗口），絕對不可提及天氣好壞
+- 【結論】必須開頭說明「氣象未知」
+- 【氣象分析】寫「查詢日期超出預報範圍，無法提供氣象資料」
+- 其他區塊正常提供天文計算結果"""
 
-【推薦時刻】top 3，標注是否在暗空窗口內
+    elif weather_status == "bad":
+        weather_instruction = """
+⛔ 氣象條件極差（雲量極高或有降雨）。
+規則：
+- 【結論】直接說明天況不適合出門拍攝
+- 【氣象分析】詳細說明惡劣天況
+- 【推薦時刻】、【銀河構圖方位】可大幅簡化，因天況不允許
+- 仍提供月相和天文條件供未來參考"""
+
+    elif weather_status == "unstable":
+        weather_instruction = """
+⚠️ 氣象條件不穩定（雲量 40~80%）。
+規則：
+- 【結論】標註「天況不穩定，建議當天再確認即時預報」
+- 【氣象分析】說明雲量變化風險
+- 其他天文資訊正常提供"""
+
+    else:
+        weather_instruction = "✅ 氣象條件良好，正常提供完整分析。"
+
+    system = f"""你是專業天文攝影顧問，熟悉台灣各地拍攝環境。繁體中文，親切專業。
+
+【重要】氣象條件是第一優先判斷：
+{weather_instruction}
+
+回覆格式（每區塊標題用【】，依氣象狀態調整詳細程度）：
+
+【結論】最佳選擇一句話（必須反映氣象狀態）
+
+【推薦時刻】top 3，標注是否在暗空窗口內（天況極差時可簡化）
 
 【月亮窗口】
 - 月出/月落時刻與方位
 - 有效暗空窗口時段
 - 對深空攝影的影響評估
 
-【銀河構圖方位】
+【銀河構圖方位】（天況極差時可簡化或省略）
 - 銀河核心最佳拍攝方向（方位角＋中文方向）
 - 月亮與銀河的相對位置
 - 具體構圖建議
 
-【氣象分析】雲量/結露風險
+【氣象分析】雲量/結露風險（氣象超出範圍時說明無資料）
 
 【裝備提醒】針對地點特性
 
 若有流星雨加【流星雨加碼】
 
-總長不超過 480 字。"""
+核心原則：
+- 天文數據（仰角、方位角、月出月落）來自精確計算，如實呈現
+- 氣象判斷只根據提供的數據，不自行假設
+- 天況不佳時主動建議替代方案（改期、換地點、轉攻其他題材）
+- 總長不超過 500 字"""
 
     resp = client.messages.create(
-        model="claude-sonnet-4-5", max_tokens=900, system=system,
+        model="claude-sonnet-4-5", max_tokens=1000, system=system,
         messages=[{"role": "user", "content":
             f"查詢類型：{'指定標的' if intent['query_type']=='A' else '開放探索'}\n"
             f"地點：{intent['location_name']}\n"
-            f"日期：{intent['date_start']} ～ {intent['date_end']}\n\n"
-            f"候選時刻：\n{ws if good else '無符合條件的時刻（月光干擾或天氣不佳）'}\n\n"
+            f"日期：{intent['date_start']} ～ {intent['date_end']}\n"
+            f"氣象狀態：{weather_status}\n\n"
+            f"候選時刻：\n{ws if good else '無符合條件的時刻'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             f"銀河構圖資訊：\n{mw_str}\n\n"
             f"流星雨：{ss}"
         }]
     )
-    return resp.content[0].text + forecast_warning
+    return resp.content[0].text
 
 
 # ── 對話狀態 ──────────────────────────────────────────────────
