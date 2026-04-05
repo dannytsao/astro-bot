@@ -2,4 +2,8 @@ node_modules/
 .git/
 *.log
 backup/
-large_data/  # 排除掉你那些不需要 AI 逐行閱讀的舊觀測數據
+large_data/
+__pycache__/
+*.pyc
+.DS_Store
+*.bsp
