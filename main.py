@@ -537,7 +537,8 @@ def check_weather_multi(lat, lon, query_dates):
     max_d = today + timedelta(days=15)
     valid = [d for d in query_dates if today <= d <= max_d]
     fb = {"cloud_cover": -1, "humidity": -1, "temp_c": -1,
-          "dew_point_c": -1, "dew_risk": False, "good_weather": True}
+          "dew_point_c": -1, "dew_risk": False, "good_weather": True,
+          "visibility_km": -1}
     if not valid:
         return {d: fb for d in query_dates}
 
@@ -558,6 +559,7 @@ def check_weather_multi(lat, lon, query_dates):
             "humidity":    data["relative_humidity_2m"][i],
             "temp_c":      data["temperature_2m"][i],
             "dew_point_c": data["dew_point_2m"][i],
+            "visibility":  data["visibility"][i],   # 公尺，稍後轉換為公里
         }
 
     daily = {}
@@ -576,12 +578,65 @@ def check_weather_multi(lat, lon, query_dates):
             ah = round(sum(x["humidity"]    for x in night) / len(night), 1)
             at = round(sum(x["temp_c"]      for x in night) / len(night), 1)
             ad = round(sum(x["dew_point_c"] for x in night) / len(night), 1)
+            av = round(sum(x["visibility"]  for x in night) / len(night) / 1000, 1)  # m→km
             daily[d] = {
                 "cloud_cover": ac, "humidity": ah,
                 "temp_c": at, "dew_point_c": ad,
-                "dew_risk":      (at - ad) < 3.0,
-                "good_weather":  ac <= 40,
+                "dew_risk":       (at - ad) < 3.0,
+                "good_weather":   ac <= 40,
+                "visibility_km":  av,
             }
+    return daily
+
+
+# ── ★ 新功能：7Timer 視寧度與大氣透明度 ──────────────────────────
+
+def get_7timer_seeing(lat, lon, query_dates):
+    """
+    從 7Timer ASTRO API 取得夜間平均視寧度與大氣透明度。
+    每 3 小時一筆，取每晚 20:00–02:00 TST 的平均值。
+
+    seeing：1=極佳(<0.5"), 2=很好, 3=良好, 4=普通, 5=尚可, 6=差, 7=很差, 8=極差(>2.5")
+    transparency：1=極佳, 2=很好, 3=良好, 4=普通, 5=尚可, 6=差, 7=很差, 8=極差
+    數字越小越好。
+    """
+    fallback = {"seeing": -1, "transparency": -1}
+    try:
+        url = (f"http://www.7timer.info/bin/astro.php"
+               f"?lon={lon}&lat={lat}&ac=0&unit=metric&output=json&tzoffset=8")
+        raw = requests.get(url, timeout=10).json()
+        init_dt = datetime.strptime(raw["init"], "%Y%m%d%H").replace(tzinfo=timezone.utc)
+    except Exception as e:
+        print(f"[7Timer 錯誤] {e}", flush=True)
+        return {d: fallback for d in query_dates}
+
+    tz_tst = timezone(timedelta(hours=8))
+
+    # 建立各時間點的資料字典（key = datetime in TST）
+    hourly = {}
+    for item in raw.get("dataseries", []):
+        dt_tst = (init_dt + timedelta(hours=item["timepoint"])).astimezone(tz_tst)
+        s = item.get("seeing", -1)
+        t = item.get("transparency", -1)
+        if s > 0 and t > 0:
+            hourly[dt_tst] = {"seeing": s, "transparency": t}
+
+    daily = {}
+    for d in query_dates:
+        night = []
+        for dt_tst, v in hourly.items():
+            h = dt_tst.hour
+            # 當夜 20:00–23:00 或隔日 00:00–02:00
+            if (dt_tst.date() == d and h >= 20) or \
+               (dt_tst.date() == d + timedelta(days=1) and h <= 2):
+                night.append(v)
+        if night:
+            daily[d] = {
+                "seeing":       round(sum(x["seeing"]       for x in night) / len(night), 1),
+                "transparency": round(sum(x["transparency"] for x in night) / len(night), 1),
+            }
+        else:
+            daily[d] = fallback
     return daily
 
 
@@ -721,17 +776,22 @@ def run_query(user_query, prefetched_intent=None):
         )
 
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
-    weather = check_weather_multi(intent["lat"], intent["lon"], query_dates)
+    weather     = check_weather_multi(intent["lat"], intent["lon"], query_dates)
+    seeing_data = get_7timer_seeing(intent["lat"], intent["lon"], query_dates)
 
     for w in all_windows:
         wx = weather.get(w["datetime_tst"].date(), {})
+        sd = seeing_data.get(w["datetime_tst"].date(), {})
         w.update({
-            "cloud_cover": wx.get("cloud_cover", -1),
-            "humidity":    wx.get("humidity",    -1),
-            "temp_c":      wx.get("temp_c",      -1),
-            "dew_point_c": wx.get("dew_point_c", -1),
-            "dew_risk":    wx.get("dew_risk",    False),
-            "good_weather": wx.get("good_weather", False),
+            "cloud_cover":    wx.get("cloud_cover",   -1),
+            "humidity":       wx.get("humidity",      -1),
+            "temp_c":         wx.get("temp_c",        -1),
+            "dew_point_c":    wx.get("dew_point_c",   -1),
+            "dew_risk":       wx.get("dew_risk",      False),
+            "good_weather":   wx.get("good_weather",  False),
+            "visibility_km":  wx.get("visibility_km", -1),
+            "seeing":         sd.get("seeing",        -1),
+            "transparency":   sd.get("transparency",  -1),
         })
 
     good = [w for w in all_windows if w.get("good_weather", False)]
@@ -753,15 +813,28 @@ def run_query(user_query, prefetched_intent=None):
     cloud_values = [v["cloud_cover"] for v in weather.values() if v.get("cloud_cover", -1) >= 0]
     avg_cloud_cover = round(sum(cloud_values) / len(cloud_values), 1) if cloud_values else -1
 
+    # ★ 計算平均能見度
+    vis_values = [v["visibility_km"] for v in weather.values() if v.get("visibility_km", -1) >= 0]
+    avg_visibility_km = round(sum(vis_values) / len(vis_values), 1) if vis_values else -1
+
+    # ★ 計算平均視寧度與大氣透明度（7Timer）
+    seeing_values = [v["seeing"] for v in seeing_data.values() if v.get("seeing", -1) > 0]
+    transp_values = [v["transparency"] for v in seeing_data.values() if v.get("transparency", -1) > 0]
+    avg_seeing       = round(sum(seeing_values) / len(seeing_values), 1) if seeing_values else -1
+    avg_transparency = round(sum(transp_values) / len(transp_values), 1) if transp_values else -1
+
     return {
         "intent":      intent,
         "good_windows": good[:10],
-        "all_windows":  all_windows,           # ★ 新增，供氣象狀態評估
+        "all_windows":  all_windows,
         "moon_info":   moon_info,
         "showers":     showers,
         "mw_composition_by_date":    mw_composition_by_date,
         "all_windows_out_of_range":  all_windows_out_of_range,
         "avg_cloud_cover":           avg_cloud_cover,
+        "avg_visibility_km":         avg_visibility_km,
+        "avg_seeing":                avg_seeing,
+        "avg_transparency":          avg_transparency,
     }
 
 
@@ -790,6 +863,9 @@ def generate_reply(result):
         "濕度":    f"{w['humidity']}%"    if w['humidity'] >= 0    else "N/A",
         "溫度":    f"{w['temp_c']}°C"     if w['temp_c'] >= -50    else "N/A",
         "結露風險": w["dew_risk"],
+        "能見度":  f"{w['visibility_km']} km" if w.get('visibility_km', -1) >= 0 else "N/A",
+        "視寧度":  f"{w['seeing']}/8（1最佳）"       if w.get('seeing', -1) > 0 else "N/A",
+        "大氣透明度": f"{w['transparency']}/8（1最佳）" if w.get('transparency', -1) > 0 else "N/A",
     } for w in good], ensure_ascii=False, indent=2)
 
     # ★ 月亮窗口資訊（給 LLM）
@@ -830,8 +906,11 @@ def generate_reply(result):
     } for s in showers], ensure_ascii=False) if showers else "無"
 
     # ── ★ 氣象狀態評估（第一道篩選）────────────────────────────
-    all_windows_out = result.get("all_windows_out_of_range", False)
-    avg_cloud = result.get("avg_cloud_cover", -1)
+    all_windows_out    = result.get("all_windows_out_of_range", False)
+    avg_cloud          = result.get("avg_cloud_cover",    -1)
+    avg_visibility_km  = result.get("avg_visibility_km",  -1)
+    avg_seeing         = result.get("avg_seeing",         -1)
+    avg_transparency   = result.get("avg_transparency",   -1)
 
     if all_windows_out:
         weather_status = "out_of_range"
@@ -895,7 +974,7 @@ def generate_reply(result):
 - 月亮與銀河的相對位置
 - 具體構圖建議
 
-【氣象分析】雲量/結露風險（氣象超出範圍時說明無資料）
+【氣象分析】雲量/能見度/結露風險；若有視寧度與透明度資料（7Timer，1=最佳 8=最差），加入評估
 
 【裝備提醒】針對地點特性
 
@@ -913,7 +992,11 @@ def generate_reply(result):
             f"查詢類型：{'指定標的' if intent['query_type']=='A' else '開放探索'}\n"
             f"地點：{intent['location_name']}\n"
             f"日期：{intent['date_start']} ～ {intent['date_end']}\n"
-            f"氣象狀態：{weather_status}\n\n"
+            f"氣象狀態：{weather_status}\n"
+            f"夜間平均雲量：{avg_cloud}%\n"
+            f"夜間平均能見度：{f'{avg_visibility_km} km' if avg_visibility_km >= 0 else 'N/A'}\n"
+            f"夜間平均視寧度（7Timer）：{f'{avg_seeing}/8（1=最佳）' if avg_seeing > 0 else 'N/A'}\n"
+            f"夜間平均大氣透明度（7Timer）：{f'{avg_transparency}/8（1=最佳）' if avg_transparency > 0 else 'N/A'}\n\n"
             f"候選時刻：\n{ws if good else '無符合條件的時刻'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             f"銀河構圖資訊：\n{mw_str}\n\n"
