@@ -847,12 +847,20 @@ def _format_time(dt):
     return dt.strftime("%H:%M")
 
 def generate_reply(result):
-    intent   = result["intent"]
-    good     = result["good_windows"]
+    intent    = result["intent"]
+    good      = result["good_windows"]
+    all_wins  = result.get("all_windows", [])
     moon_info = result["moon_info"]
-    showers  = result["showers"]
-    mw_comp  = result["mw_composition_by_date"]
-    # ── 送給 LLM 的資料 ─────────────────────────────────────
+    showers   = result["showers"]
+    mw_comp   = result["mw_composition_by_date"]
+
+    # ── 送給 LLM 的時刻資料 ──────────────────────────────────
+    # 天氣不佳時 good 可能為空 → fallback 到天文窗口（最多 10 個），讓 LLM 仍能提供時刻建議
+    windows_for_llm = good if good else sorted(
+        all_wins, key=lambda w: w.get("alt_deg", 0), reverse=True
+    )[:10]
+    weather_fallback = (not good) and bool(all_wins)  # True 代表使用 fallback
+
     ws = json.dumps([{
         "標的":    w["target_name"],
         "日期時間": w["datetime_tst"].strftime("%m/%d %H:%M TST"),
@@ -866,7 +874,7 @@ def generate_reply(result):
         "能見度":  f"{w['visibility_km']} km" if w.get('visibility_km', -1) >= 0 else "N/A",
         "視寧度":  f"{w['seeing']}/8（1最佳）"       if w.get('seeing', -1) > 0 else "N/A",
         "大氣透明度": f"{w['transparency']}/8（1最佳）" if w.get('transparency', -1) > 0 else "N/A",
-    } for w in good], ensure_ascii=False, indent=2)
+    } for w in windows_for_llm], ensure_ascii=False, indent=2)
 
     # ★ 月亮窗口資訊（給 LLM）
     moon_summary = []
@@ -937,10 +945,11 @@ def generate_reply(result):
         weather_instruction = """
 ⛔ 氣象條件極差（雲量極高或有降雨）。
 規則：
-- 【結論】直接說明天況不適合出門拍攝
+- 【結論】直接說明天況不適合出門拍攝，但仍給出天文條件最佳時刻供參考
+- 【推薦時刻】仍列出 Top 3 天文窗口（標注「天況不佳，僅供天文參考」），包含仰角、方位角、雲量
 - 【氣象分析】詳細說明惡劣天況
-- 【推薦時刻】、【銀河構圖方位】可大幅簡化，因天況不允許
-- 仍提供月相和天文條件供未來參考"""
+- 【銀河構圖方位】可簡化或省略
+- 主動建議改期或換天氣更好的日期"""
 
     elif weather_status == "unstable":
         weather_instruction = """
@@ -960,23 +969,30 @@ def generate_reply(result):
 
 回覆格式（每區塊標題用【】，依氣象狀態調整詳細程度）：
 
-【結論】最佳選擇一句話（必須反映氣象狀態）
+【結論】一句話點出最佳日期＋時刻＋天況，讓用戶立刻知道「要不要去」
 
-【推薦時刻】top 3，標注是否在暗空窗口內（天況極差時可簡化）
+【推薦時刻】Top 3，每條格式：
+  日期 時刻 ⭐（若暗空窗口內）
+  仰角 X°、方位角 X°（中文方向）｜雲量 X%、能見度 X km、濕度 X%
+  天況不佳時標注「天況不佳，僅供天文參考」
 
-【月亮窗口】
-- 月出/月落時刻與方位
-- 有效暗空窗口時段
-- 對深空攝影的影響評估
+【月亮窗口】每日一條：
+  - 月出/月落時刻＋方位角
+  - 有效暗空窗口時段（時長）
+  - 對深空攝影的影響評估（月相＋亮度）
 
-【銀河構圖方位】（天況極差時可簡化或省略）
-- 銀河核心最佳拍攝方向（方位角＋中文方向）
-- 月亮與銀河的相對位置
-- 具體構圖建議
+【銀河構圖方位】（天況極差時可省略）
+  - 銀河核心方位角＋中文方向＋仰角
+  - 月亮相對位置
+  - 具體構圖建議（鏡頭焦段、前景選擇）
 
-【氣象分析】雲量/能見度/結露風險；若有視寧度與透明度資料（7Timer，1=最佳 8=最差），加入評估
+【氣象分析】
+  - 雲量：夜間平均 X%
+  - 能見度：平均 X km
+  - 結露風險：溫度/露點差，是否需要加熱帶
+  - 若有視寧度與透明度（7Timer，1=最佳 8=最差），簡要評估對星點清晰度的影響
 
-【裝備提醒】針對地點特性
+【裝備提醒】針對地點高度、溫度、交通特性給出具體建議
 
 若有流星雨加【流星雨加碼】
 
@@ -997,7 +1013,7 @@ def generate_reply(result):
             f"夜間平均能見度：{f'{avg_visibility_km} km' if avg_visibility_km >= 0 else 'N/A'}\n"
             f"夜間平均視寧度（7Timer）：{f'{avg_seeing}/8（1=最佳）' if avg_seeing > 0 else 'N/A'}\n"
             f"夜間平均大氣透明度（7Timer）：{f'{avg_transparency}/8（1=最佳）' if avg_transparency > 0 else 'N/A'}\n\n"
-            f"候選時刻：\n{ws if good else '無符合條件的時刻'}\n\n"
+            f"候選時刻{'（天氣不佳，以下為天文窗口供參考）' if weather_fallback else ''}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             f"銀河構圖資訊：\n{mw_str}\n\n"
             f"流星雨：{ss}"
