@@ -1,6 +1,7 @@
 skyfield
 requests
 anthropic
-python-telegram-bot
+line-bot-sdk
+flask
 gspread
 google-auth
