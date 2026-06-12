@@ -80,6 +80,33 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
     except Exception as e:
         print(f"[Sheets 錯誤] {e}", flush=True)
 
+def extract_mark_as_read_token(event):
+    token = getattr(event.message, "mark_as_read_token", "") or getattr(event.message, "markAsReadToken", "")
+    if token:
+        return token
+    try:
+        return event.as_json_dict().get("message", {}).get("markAsReadToken", "")
+    except Exception:
+        return ""
+
+def mark_message_as_read(mark_as_read_token):
+    if not LINE_ACCESS_TOKEN or not mark_as_read_token:
+        return False
+    try:
+        response = requests.post(
+            "https://api.line.me/v2/bot/message/markAsRead",
+            headers={"Authorization": f"Bearer {LINE_ACCESS_TOKEN}"},
+            json={"markAsReadToken": mark_as_read_token},
+            timeout=5,
+        )
+        if response.status_code == 200:
+            print("[已讀] LINE message marked as read", flush=True)
+            return True
+        print(f"[已讀錯誤] {response.status_code}: {response.text[:200]}", flush=True)
+    except Exception as e:
+        print(f"[已讀錯誤] {type(e).__name__}: {e}", flush=True)
+    return False
+
 # ── Skyfield 初始化 ────────────────────────────────────────────
 
 ts  = load.timescale()
@@ -889,7 +916,7 @@ def get_display_name(user_id):
         return "朋友"
 
 
-def process_and_reply(user_id, text):
+def process_and_reply(user_id, text, mark_as_read_token=""):
     """
     背景執行緒：執行天文計算後以 push_message 回傳結果。
     reply_token 30 秒過期，長時間計算須改用 push_message。
@@ -912,6 +939,7 @@ def process_and_reply(user_id, text):
                 text=notice,
                 quick_reply=make_unsupported_quick_reply()
             ))
+            mark_message_as_read(mark_as_read_token)
             print(f"[攔截] 不支援查詢：{labels}", flush=True)
             return
 
@@ -935,6 +963,7 @@ def process_and_reply(user_id, text):
                 text=reply,
                 quick_reply=make_feedback_quick_reply()
             ))
+        mark_message_as_read(mark_as_read_token)
         print("[回覆] 完成", flush=True)
 
     except Exception as e:
@@ -961,6 +990,7 @@ def callback():
 def handle_message(event):
     user_id = event.source.user_id
     text    = event.message.text.strip()
+    mark_as_read_token = extract_mark_as_read_token(event)
     print(f"[收到] {user_id}: {text}", flush=True)
 
     # 許願等待狀態
@@ -972,6 +1002,7 @@ def handle_message(event):
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的建議！💡 已記錄到許願池 🙏"
         ))
+        mark_message_as_read(mark_as_read_token)
         print(f"[許願] {username}: {text}", flush=True)
         return
 
@@ -987,13 +1018,19 @@ def handle_message(event):
                 "我會幫你計算最佳觀測時刻、月亮暗空窗口、銀河構圖方位和氣象條件 🌌"
             )
         ))
+        mark_message_as_read(mark_as_read_token)
         return
 
     # 一般查詢：立即回應「計算中」，背景執行運算
     line_bot_api.reply_message(event.reply_token, TextSendMessage(
         text="🔭 計算中，請稍候（約 30～60 秒）..."
     ))
-    thread = threading.Thread(target=process_and_reply, args=(user_id, text), daemon=True)
+    mark_message_as_read(mark_as_read_token)
+    thread = threading.Thread(
+        target=process_and_reply,
+        args=(user_id, text, mark_as_read_token),
+        daemon=True,
+    )
     thread.start()
 
 
@@ -1016,6 +1053,14 @@ def handle_postback(event):
         ))
     elif data == "wish":
         user_state[user_id] = "waiting_wish"
+        log_feedback(
+            username,
+            user_id,
+            last_q,
+            "💡",
+            "許願（待輸入）",
+            "使用者點擊許願按鈕，等待輸入建議",
+        )
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="💡 請說說你的建議或想新增的功能，直接輸入文字就好："
         ))
