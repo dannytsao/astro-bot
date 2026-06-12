@@ -1,4 +1,4 @@
-import hashlib, math, requests, json, re, logging, os, threading
+import hashlib, http.client, math, requests, json, re, logging, os, threading
 
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
@@ -20,6 +20,7 @@ def read_openrouter_api_key():
         key = re.sub(r"^Authorization:\s*", "", key, flags=re.IGNORECASE).strip()
         key = re.sub(r"^Bearer\s+", "", key, flags=re.IGNORECASE).strip()
         key = re.sub(r"\s+", "", key)
+        key = "".join(ch for ch in key if ch.isascii() and ch.isprintable())
         if key:
             return key, env_name
     return "", ""
@@ -62,45 +63,66 @@ print(f"🔐 OpenRouter key fingerprint: {fingerprint_openrouter_key()}", flush=
 
 # ── OpenRouter LLM client ─────────────────────────────────────
 
+def openrouter_headers():
+    return {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "HTTP-Referer": OPENROUTER_SITE_URL,
+        "X-Title": OPENROUTER_APP_NAME,
+    }
+
+def openrouter_request(method, path, payload=None, timeout=60):
+    body = json.dumps(payload).encode("utf-8") if payload is not None else None
+    conn = http.client.HTTPSConnection("openrouter.ai", timeout=timeout)
+    try:
+        conn.request(method, path, body=body, headers=openrouter_headers())
+        response = conn.getresponse()
+        response_body = response.read().decode("utf-8", errors="replace")
+        if response.status >= 400:
+            raise RuntimeError(f"HTTP {response.status}: {response_body[:500]}")
+        return json.loads(response_body) if response_body else {}
+    finally:
+        conn.close()
+
+def probe_openrouter_key():
+    if not OPENROUTER_API_KEY:
+        print("🔐 OpenRouter key probe: skipped, no key", flush=True)
+        return
+    try:
+        data = openrouter_request("GET", "/api/v1/key", timeout=15)
+        print(f"🔐 OpenRouter key probe: ok fields={','.join(sorted(data.keys()))}", flush=True)
+    except Exception as e:
+        message = str(e).strip() or repr(e)
+        print(f"🔐 OpenRouter key probe failed: {type(e).__name__}: {message}", flush=True)
+
+probe_openrouter_key()
+
 def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
 
-    try:
-        from openai import OpenAI
-    except ImportError as e:
-        raise RuntimeError("openai package is not installed") from e
-
     print(
-        f"🔐 OpenRouter SDK auth: key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
+        f"🔐 OpenRouter raw HTTPS auth: key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
         flush=True,
     )
-    client = OpenAI(
-        base_url="https://openrouter.ai/api/v1",
-        api_key=OPENROUTER_API_KEY,
-        default_headers={
-            "HTTP-Referer": OPENROUTER_SITE_URL,
-            "X-Title": OPENROUTER_APP_NAME,
-        },
-    )
     try:
-        completion = client.chat.completions.create(
-            model=OPENROUTER_MODEL,
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            max_tokens=max_tokens,
-            temperature=temperature,
+        data = openrouter_request(
+            "POST",
+            "/api/v1/chat/completions",
+            {
+                "model": OPENROUTER_MODEL,
+                "messages": [
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                "max_tokens": max_tokens,
+                "temperature": temperature,
+            },
         )
-        return completion.choices[0].message.content or ""
+        return data["choices"][0]["message"]["content"] or ""
     except Exception as e:
-        response = getattr(e, "response", None)
-        body = getattr(response, "text", "") if response is not None else ""
-        detail = body[:500] if body else str(e)[:500]
-        status = getattr(e, "status_code", "")
-        status_text = f" {status}" if status else ""
-        raise RuntimeError(f"OpenRouter request failed via OpenAI SDK: {type(e).__name__}{status_text}: {detail}") from e
+        raise RuntimeError(f"OpenRouter request failed via raw HTTPS: {describe_exception(e)}") from e
 
 # ── Google Sheets ──────────────────────────────────────────────
 
