@@ -5,7 +5,7 @@ from skyfield.api import Star, wgs84, load
 from skyfield import almanac
 from flask import Flask, request, abort, jsonify
 from linebot import LineBotApi, WebhookHandler
-from linebot.exceptions import InvalidSignatureError
+from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, PostbackEvent, TextMessage, TextSendMessage,
     QuickReply, QuickReplyButton, PostbackAction,
@@ -41,6 +41,16 @@ def fingerprint_openrouter_key():
         return "none"
     return hashlib.sha256(OPENROUTER_API_KEY.encode("utf-8")).hexdigest()[:12]
 
+def fingerprint_line_access_token():
+    if not LINE_ACCESS_TOKEN:
+        return "none"
+    return hashlib.sha256(LINE_ACCESS_TOKEN.encode("utf-8")).hexdigest()[:12]
+
+def describe_line_token():
+    if not LINE_ACCESS_TOKEN:
+        return "not configured"
+    return f"length={len(LINE_ACCESS_TOKEN)}, fingerprint={fingerprint_line_access_token()}"
+
 OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
 OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
 OPENROUTER_FALLBACK_MODELS = os.environ.get("OPENROUTER_FALLBACK_MODELS", "google/gemini-2.5-flash,openai/gpt-4o-mini")
@@ -62,6 +72,7 @@ print(
 )
 print(f"🔐 OpenRouter key check: {describe_openrouter_key()}", flush=True)
 print(f"🔐 OpenRouter key fingerprint: {fingerprint_openrouter_key()}", flush=True)
+print(f"🔐 LINE access token check: {describe_line_token()}", flush=True)
 print(f"🚦 App version: {APP_VERSION}", flush=True)
 
 # ── OpenRouter LLM client ─────────────────────────────────────
@@ -89,6 +100,7 @@ def openrouter_request(method, path, payload=None, timeout=60):
         conn.close()
 
 OPENROUTER_KEY_PROBE_STATUS = "not_run"
+LINE_API_PROBE_STATUS = "not_run"
 
 def probe_openrouter_key():
     global OPENROUTER_KEY_PROBE_STATUS
@@ -106,6 +118,57 @@ def probe_openrouter_key():
         print(f"🔐 OpenRouter key probe {OPENROUTER_KEY_PROBE_STATUS}", flush=True)
 
 probe_openrouter_key()
+
+def summarize_line_api_error(error):
+    status_code = getattr(error, "status_code", "unknown")
+    error_response = getattr(error, "error_response", None)
+    message = getattr(error_response, "message", "") if error_response else ""
+    headers = getattr(error, "headers", {}) or {}
+    auth_error = headers.get("WWW-Authenticate", "")
+    details = []
+    if status_code:
+        details.append(f"status={status_code}")
+    if message:
+        details.append(f"message={message}")
+    if auth_error:
+        details.append(f"auth={auth_error}")
+    return "; ".join(details) or repr(error)
+
+def probe_line_access_token():
+    global LINE_API_PROBE_STATUS
+    if not LINE_ACCESS_TOKEN:
+        LINE_API_PROBE_STATUS = "skipped:no_token"
+        print(f"🔐 LINE token probe: {LINE_API_PROBE_STATUS}", flush=True)
+        return
+    try:
+        if hasattr(line_bot_api, "get_bot_info"):
+            line_bot_api.get_bot_info()
+        LINE_API_PROBE_STATUS = "ok"
+        print(f"🔐 LINE token probe: {LINE_API_PROBE_STATUS}", flush=True)
+    except LineBotApiError as e:
+        LINE_API_PROBE_STATUS = f"failed:{summarize_line_api_error(e)[:200]}"
+        print(f"🔐 LINE token probe: {LINE_API_PROBE_STATUS}", flush=True)
+    except Exception as e:
+        LINE_API_PROBE_STATUS = f"failed:{type(e).__name__}: {str(e)[:200]}"
+        print(f"🔐 LINE token probe: {LINE_API_PROBE_STATUS}", flush=True)
+
+probe_line_access_token()
+
+def safe_reply_message(reply_token, message, context="reply"):
+    try:
+        line_bot_api.reply_message(reply_token, message)
+        return True
+    except LineBotApiError as e:
+        print(f"[LINE API 錯誤] {context}: {summarize_line_api_error(e)}", flush=True)
+        return False
+
+def safe_push_message(user_id, message, context="push"):
+    try:
+        line_bot_api.push_message(user_id, message)
+        return True
+    except LineBotApiError as e:
+        print(f"[LINE API 錯誤] {context}: {summarize_line_api_error(e)}", flush=True)
+        return False
 
 def openrouter_model_sequence():
     models = [OPENROUTER_MODEL]
@@ -217,6 +280,10 @@ def healthz():
         "openrouter_key_probe": OPENROUTER_KEY_PROBE_STATUS,
         "openrouter_model": OPENROUTER_MODEL,
         "openrouter_fallback_models": openrouter_model_sequence(),
+        "line_token_configured": bool(LINE_ACCESS_TOKEN),
+        "line_token_length": len(LINE_ACCESS_TOKEN or ""),
+        "line_token_fingerprint": fingerprint_line_access_token(),
+        "line_token_probe": LINE_API_PROBE_STATUS,
         "google_sheets_connected": ws_query is not None and ws_feedback is not None,
         "spreadsheet_id": SPREADSHEET_ID,
     })
@@ -1143,10 +1210,10 @@ def process_and_reply(user_id, text, mark_as_read_token=""):
             )
             user_wish_text[user_id] = scope["wish_text"]
             user_last_query[user_id] = text
-            line_bot_api.push_message(user_id, TextSendMessage(
+            safe_push_message(user_id, TextSendMessage(
                 text=notice,
                 quick_reply=make_unsupported_quick_reply()
-            ))
+            ), "unsupported notice")
             mark_message_as_read(mark_as_read_token)
             print(f"[攔截] 不支援查詢：{labels}", flush=True)
             return
@@ -1162,22 +1229,22 @@ def process_and_reply(user_id, text, mark_as_read_token=""):
                 "僅供參考。如需即時座標，歡迎加入許願池催促我們升級！"
             )
             user_wish_text[user_id] = scope["wish_text"]
-            line_bot_api.push_message(user_id, TextSendMessage(
+            safe_push_message(user_id, TextSendMessage(
                 text=reply + comet_notice,
                 quick_reply=make_feedback_quick_reply()
-            ))
+            ), "query reply with comet notice")
         else:
-            line_bot_api.push_message(user_id, TextSendMessage(
+            safe_push_message(user_id, TextSendMessage(
                 text=reply,
                 quick_reply=make_feedback_quick_reply()
-            ))
+            ), "query reply")
         mark_message_as_read(mark_as_read_token)
         print("[回覆] 完成", flush=True)
 
     except Exception as e:
-        line_bot_api.push_message(user_id, TextSendMessage(
+        safe_push_message(user_id, TextSendMessage(
             text=f"⚠️ 發生錯誤，請重新嘗試。\n{type(e).__name__}: {e}"
-        ))
+        ), "error reply")
         print(f"[錯誤] {type(e).__name__}: {e}", flush=True)
 
 
@@ -1191,6 +1258,9 @@ def callback():
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
+    except LineBotApiError as e:
+        print(f"[LINE API 錯誤] callback: {summarize_line_api_error(e)}", flush=True)
+        return "OK"
     return "OK"
 
 
@@ -1207,9 +1277,9 @@ def handle_message(event):
         username = get_display_name(user_id)
         last_q   = user_last_query.get(user_id, "")
         saved = log_wish(username, user_id, last_q, text, "許願")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的建議！💡 已記錄到許願池 🙏" if saved else "⚠️ 建議已收到，但寫入 Google Sheet 失敗，請稍後再試。"
-        ))
+        ), "wish reply")
         mark_message_as_read(mark_as_read_token)
         print(f"[許願] {username}: {text}", flush=True)
         return
@@ -1219,16 +1289,16 @@ def handle_message(event):
         username = get_display_name(user_id)
         last_q = user_last_query.get(user_id, "")
         saved = log_wish(username, user_id, last_q, text, "許願（文字）")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的建議！💡 已記錄到許願池 🙏" if saved else "⚠️ 建議已收到，但寫入 Google Sheet 失敗，請稍後再試。"
-        ))
+        ), "direct wish reply")
         mark_message_as_read(mark_as_read_token)
         print(f"[許願-文字] {username}: {text}", flush=True)
         return
 
     # 說明指令
     if text in ["/start", "/help", "help", "說明"]:
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text=(
                 "🔭 天文攝影查詢 Bot\n\n"
                 "直接用自然語言問我，例如：\n"
@@ -1237,14 +1307,15 @@ def handle_message(event):
                 "・5月1日到3日 墾丁 天蠍座\n\n"
                 "我會幫你計算最佳觀測時刻、月亮暗空窗口、銀河構圖方位和氣象條件 🌌"
             )
-        ))
+        ), "help reply")
         mark_message_as_read(mark_as_read_token)
         return
 
     # 一般查詢：立即回應「計算中」，背景執行運算
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(
+    if not safe_reply_message(event.reply_token, TextSendMessage(
         text="🔭 計算中，請稍候（約 30～60 秒）..."
-    ))
+    ), "initial query reply"):
+        return
     mark_message_as_read(mark_as_read_token)
     thread = threading.Thread(
         target=process_and_reply,
@@ -1263,28 +1334,28 @@ def handle_postback(event):
 
     if data == "rate_good":
         log_feedback(username, user_id, last_q, "👍", "評分")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的回饋！👍 已記錄"
-        ))
+        ), "good rating reply")
     elif data == "rate_bad":
         log_feedback(username, user_id, last_q, "👎", "評分")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的回饋！👎 已記錄，我們會繼續改進"
-        ))
+        ), "bad rating reply")
     elif data == "wish":
         user_state[user_id] = "waiting_wish"
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="💡 請說說你的建議或想新增的功能。建議用「建議：...」開頭，這樣即使服務重啟也能被記錄。"
-        ))
+        ), "wish prompt reply")
     elif data == "wish_auto":
         wish = user_wish_text.get(user_id, last_q)
         log_wish(username, user_id, last_q, wish, "許願（自動）")
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+        safe_reply_message(event.reply_token, TextSendMessage(
             text="💡 已加入許願池！謝謝你的支持，我們會優先考慮開發 🙏"
-        ))
+        ), "auto wish reply")
         print(f"[許願-自動] {username}: {wish}", flush=True)
     elif data == "wish_skip":
-        line_bot_api.reply_message(event.reply_token, TextSendMessage(text="好的 👍"))
+        safe_reply_message(event.reply_token, TextSendMessage(text="好的 👍"), "wish skip reply")
 
 
 # ── 主程式 ────────────────────────────────────────────────────
