@@ -1,4 +1,6 @@
 import math, requests, json, re, logging, os, threading
+import urllib.error
+import urllib.request
 
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
@@ -60,9 +62,19 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
 
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ],
+        "max_tokens": max_tokens,
+        "temperature": temperature,
+    }
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
+        "Accept": "application/json",
         "HTTP-Referer": OPENROUTER_SITE_URL,
         "X-Title": OPENROUTER_APP_NAME,
     }
@@ -70,27 +82,22 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
         f"🔐 OpenRouter request auth: header_present={'Authorization' in headers}, key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
         flush=True,
     )
-    response = requests.post(
+    request = urllib.request.Request(
         "https://openrouter.ai/api/v1/chat/completions",
+        data=json.dumps(payload).encode("utf-8"),
         headers=headers,
-        json={
-            "model": OPENROUTER_MODEL,
-            "messages": [
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            "max_tokens": max_tokens,
-            "temperature": temperature,
-        },
-        timeout=60,
+        method="POST",
     )
     try:
-        response.raise_for_status()
-        data = response.json()
+        with urllib.request.urlopen(request, timeout=60) as response:
+            body = response.read().decode("utf-8")
+        data = json.loads(body)
         return data["choices"][0]["message"]["content"]
+    except urllib.error.HTTPError as e:
+        body = e.read().decode("utf-8", errors="replace")[:500]
+        raise RuntimeError(f"OpenRouter request failed: HTTPError {e.code}: {body}") from e
     except Exception as e:
-        body = response.text[:500] if response is not None else ""
-        raise RuntimeError(f"OpenRouter request failed: {type(e).__name__}: {body}") from e
+        raise RuntimeError(f"OpenRouter request failed: {type(e).__name__}: {e}") from e
 
 # ── Google Sheets ──────────────────────────────────────────────
 
