@@ -76,8 +76,29 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
 
 # ── Google Sheets ──────────────────────────────────────────────
 
+def describe_exception(e):
+    message = str(e).strip() or repr(e)
+    return f"{type(e).__name__}: {message}"
+
+def parse_google_credentials():
+    if not GOOGLE_CREDENTIALS or not GOOGLE_CREDENTIALS.strip():
+        raise RuntimeError("GOOGLE_CREDENTIALS_JSON is not configured")
+    try:
+        creds_dict = json.loads(GOOGLE_CREDENTIALS)
+    except json.JSONDecodeError as e:
+        raise RuntimeError(f"GOOGLE_CREDENTIALS_JSON is not valid JSON: {e}") from e
+    if not isinstance(creds_dict, dict):
+        raise RuntimeError("GOOGLE_CREDENTIALS_JSON must be a JSON object")
+    if not creds_dict.get("client_email"):
+        raise RuntimeError("GOOGLE_CREDENTIALS_JSON is missing client_email")
+    print(
+        f"📄 Google Sheets target: spreadsheet={SPREADSHEET_ID}, service_account={creds_dict.get('client_email')}",
+        flush=True,
+    )
+    return creds_dict
+
 def init_sheets():
-    creds_dict = json.loads(GOOGLE_CREDENTIALS)
+    creds_dict = parse_google_credentials()
     scopes = ["https://spreadsheets.google.com/feeds",
               "https://www.googleapis.com/auth/drive"]
     creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
@@ -99,7 +120,7 @@ try:
     ws_query, ws_feedback = init_sheets()
     print("✅ Google Sheets 連線成功", flush=True)
 except Exception as e:
-    print(f"⚠️ Google Sheets 連線失敗：{e}", flush=True)
+    print(f"⚠️ Google Sheets 連線失敗：{describe_exception(e)}", flush=True)
     ws_query = ws_feedback = None
 
 def log_query(username, user_id, query, intent):
@@ -108,7 +129,7 @@ def log_query(username, user_id, query, intent):
         try:
             ws_query, ws_feedback = init_sheets()
         except Exception as e:
-            print(f"[Sheets 錯誤] 查詢記錄初始化失敗：{e}", flush=True)
+            print(f"[Sheets 錯誤] 查詢記錄初始化失敗：{describe_exception(e)}", flush=True)
     if not ws_query:
         return
     try:
@@ -121,7 +142,7 @@ def log_query(username, user_id, query, intent):
             "A" if intent.get("query_type")=="A" else "B",
         ])
     except Exception as e:
-        print(f"[Sheets 錯誤] {e}", flush=True)
+        print(f"[Sheets 錯誤] {describe_exception(e)}", flush=True)
 
 def normalize_feedback_content(rating, feedback_type, wish=""):
     content = (wish or "").strip()
@@ -138,7 +159,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
         try:
             ws_query, ws_feedback = init_sheets()
         except Exception as e:
-            print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{e}", flush=True)
+            print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{describe_exception(e)}", flush=True)
     if not ws_feedback:
         return False
     content = normalize_feedback_content(rating, feedback_type, wish)
@@ -150,7 +171,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
         print(f"[Sheets] 已記錄反饋：{feedback_type}", flush=True)
         return True
     except Exception as e:
-        print(f"[Sheets 錯誤] {e}", flush=True)
+        print(f"[Sheets 錯誤] {describe_exception(e)}", flush=True)
         try:
             ws_query, ws_feedback = init_sheets()
             ws_feedback.append_row([
@@ -160,7 +181,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
             print(f"[Sheets] 重新連線後已記錄反饋：{feedback_type}", flush=True)
             return True
         except Exception as retry_error:
-            print(f"[Sheets 錯誤] 反饋重試失敗：{retry_error}", flush=True)
+            print(f"[Sheets 錯誤] 反饋重試失敗：{describe_exception(retry_error)}", flush=True)
             return False
 
 def log_wish(username, user_id, query, wish, wish_type="許願"):
