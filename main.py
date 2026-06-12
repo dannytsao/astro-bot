@@ -43,8 +43,8 @@ def init_sheets():
     try:
         ws_feedback = sh.worksheet("用戶反饋")
     except gspread.WorksheetNotFound:
-        ws_feedback = sh.add_worksheet("用戶反饋", rows=1000, cols=8)
-        ws_feedback.append_row(["時間","用戶名","用戶ID","查詢內容","評分","類型","許願內容"])
+        ws_feedback = sh.add_worksheet("用戶反饋", rows=1000, cols=3)
+        ws_feedback.append_row(["日期及時間","Line User Name","建議事項的內容"])
     return ws_query, ws_feedback
 
 try:
@@ -75,6 +75,15 @@ def log_query(username, user_id, query, intent):
     except Exception as e:
         print(f"[Sheets 錯誤] {e}", flush=True)
 
+def normalize_feedback_content(rating, feedback_type, wish=""):
+    content = (wish or "").strip()
+    if content:
+        content = re.sub(r"^(建議|許願|希望|wish|suggest|suggestion|feature request|功能建議)\s*[：:，,、-]*\s*", "", content, flags=re.IGNORECASE)
+        return content or wish.strip()
+    if rating:
+        return f"{feedback_type}：{rating}"
+    return feedback_type
+
 def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
     global ws_query, ws_feedback
     if not ws_feedback:
@@ -84,10 +93,11 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
             print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{e}", flush=True)
     if not ws_feedback:
         return False
+    content = normalize_feedback_content(rating, feedback_type, wish)
     try:
         ws_feedback.append_row([
             datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
-            username, str(user_id), query, rating, feedback_type, wish,
+            username, content,
         ])
         print(f"[Sheets] 已記錄反饋：{feedback_type}", flush=True)
         return True
@@ -97,7 +107,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
             ws_query, ws_feedback = init_sheets()
             ws_feedback.append_row([
                 datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
-                username, str(user_id), query, rating, feedback_type, wish,
+                username, content,
             ])
             print(f"[Sheets] 重新連線後已記錄反饋：{feedback_type}", flush=True)
             return True
@@ -1099,13 +1109,6 @@ def handle_postback(event):
         ))
     elif data == "wish":
         user_state[user_id] = "waiting_wish"
-        log_wish(
-            username,
-            user_id,
-            last_q,
-            "使用者點擊許願按鈕，等待輸入建議",
-            "許願（待輸入）",
-        )
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="💡 請說說你的建議或想新增的功能。建議用「建議：...」開頭，這樣即使服務重啟也能被記錄。"
         ))
