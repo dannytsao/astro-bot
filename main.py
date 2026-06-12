@@ -1,4 +1,4 @@
-import hashlib, http.client, math, requests, json, re, logging, os, threading
+import hashlib, http.client, math, requests, json, re, logging, os, threading, traceback
 
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
@@ -134,6 +134,10 @@ def summarize_line_api_error(error):
         details.append(f"auth={auth_error}")
     return "; ".join(details) or repr(error)
 
+def log_unhandled_exception(context, error):
+    print(f"[未預期錯誤] {context}: {type(error).__name__}: {error}", flush=True)
+    print(traceback.format_exc(), flush=True)
+
 def probe_line_access_token():
     global LINE_API_PROBE_STATUS
     if not LINE_ACCESS_TOKEN:
@@ -161,6 +165,9 @@ def safe_reply_message(reply_token, message, context="reply"):
     except LineBotApiError as e:
         print(f"[LINE API 錯誤] {context}: {summarize_line_api_error(e)}", flush=True)
         return False
+    except Exception as e:
+        log_unhandled_exception(f"LINE {context}", e)
+        return False
 
 def safe_push_message(user_id, message, context="push"):
     try:
@@ -168,6 +175,9 @@ def safe_push_message(user_id, message, context="push"):
         return True
     except LineBotApiError as e:
         print(f"[LINE API 錯誤] {context}: {summarize_line_api_error(e)}", flush=True)
+        return False
+    except Exception as e:
+        log_unhandled_exception(f"LINE {context}", e)
         return False
 
 def openrouter_model_sequence():
@@ -1187,7 +1197,8 @@ def get_display_name(user_id):
     try:
         profile = line_bot_api.get_profile(user_id)
         return profile.display_name or "朋友"
-    except Exception:
+    except Exception as e:
+        print(f"[LINE profile 錯誤] {type(e).__name__}: {e}", flush=True)
         return "朋友"
 
 
@@ -1242,6 +1253,7 @@ def process_and_reply(user_id, text, mark_as_read_token=""):
         print("[回覆] 完成", flush=True)
 
     except Exception as e:
+        log_unhandled_exception("process_and_reply", e)
         safe_push_message(user_id, TextSendMessage(
             text=f"⚠️ 發生錯誤，請重新嘗試。\n{type(e).__name__}: {e}"
         ), "error reply")
@@ -1260,6 +1272,11 @@ def callback():
         abort(400)
     except LineBotApiError as e:
         print(f"[LINE API 錯誤] callback: {summarize_line_api_error(e)}", flush=True)
+        return "OK"
+    except Exception as e:
+        body_preview = body[:500].replace("\n", "\\n")
+        print(f"[callback 未預期錯誤] body={body_preview}", flush=True)
+        log_unhandled_exception("callback", e)
         return "OK"
     return "OK"
 
