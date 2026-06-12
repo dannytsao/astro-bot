@@ -45,20 +45,25 @@ def init_sheets():
     except gspread.WorksheetNotFound:
         ws_feedback = sh.add_worksheet("用戶反饋", rows=1000, cols=8)
         ws_feedback.append_row(["時間","用戶名","用戶ID","查詢內容","評分","類型","許願內容"])
-    return ws_query, ws_feedback
+    try:
+        ws_wish = sh.worksheet("許願池")
+    except gspread.WorksheetNotFound:
+        ws_wish = sh.add_worksheet("許願池", rows=1000, cols=7)
+        ws_wish.append_row(["時間","用戶名","用戶ID","來源查詢","類型","內容","狀態"])
+    return ws_query, ws_feedback, ws_wish
 
 try:
-    ws_query, ws_feedback = init_sheets()
+    ws_query, ws_feedback, ws_wish = init_sheets()
     print("✅ Google Sheets 連線成功", flush=True)
 except Exception as e:
     print(f"⚠️ Google Sheets 連線失敗：{e}", flush=True)
-    ws_query = ws_feedback = None
+    ws_query = ws_feedback = ws_wish = None
 
 def log_query(username, user_id, query, intent):
-    global ws_query, ws_feedback
+    global ws_query, ws_feedback, ws_wish
     if not ws_query:
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_wish = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 查詢記錄初始化失敗：{e}", flush=True)
     if not ws_query:
@@ -76,10 +81,10 @@ def log_query(username, user_id, query, intent):
         print(f"[Sheets 錯誤] {e}", flush=True)
 
 def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
-    global ws_query, ws_feedback
+    global ws_query, ws_feedback, ws_wish
     if not ws_feedback:
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_wish = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{e}", flush=True)
     if not ws_feedback:
@@ -94,7 +99,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
     except Exception as e:
         print(f"[Sheets 錯誤] {e}", flush=True)
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_wish = init_sheets()
             ws_feedback.append_row([
                 datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
                 username, str(user_id), query, rating, feedback_type, wish,
@@ -105,10 +110,37 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
             print(f"[Sheets 錯誤] 反饋重試失敗：{retry_error}", flush=True)
             return False
 
+def log_wish(username, user_id, query, wish, wish_type="許願"):
+    global ws_query, ws_feedback, ws_wish
+    saved_feedback = log_feedback(username, user_id, query, "💡", wish_type, wish)
+    if not ws_wish:
+        try:
+            ws_query, ws_feedback, ws_wish = init_sheets()
+        except Exception as e:
+            print(f"[Sheets 錯誤] 許願池初始化失敗：{e}", flush=True)
+    if not ws_wish:
+        return saved_feedback
+    try:
+        ws_wish.append_row([
+            datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
+            username,
+            str(user_id),
+            query,
+            wish_type,
+            wish,
+            "new",
+        ])
+        print(f"[Sheets] 已記錄許願池：{wish_type}", flush=True)
+        return True
+    except Exception as e:
+        print(f"[Sheets 錯誤] 許願池寫入失敗：{e}", flush=True)
+        return saved_feedback
+
 def is_direct_wish_text(text):
     normalized = text.strip().lower()
-    prefixes = ("許願", "建議", "wish", "suggest", "suggestion", "feature request", "功能建議")
-    return any(normalized.startswith(prefix) for prefix in prefixes)
+    prefixes = ("許願", "建議", "希望", "wish", "suggest", "suggestion", "feature request", "功能建議")
+    keywords = ("希望支援", "希望加入", "建議加入", "建議新增", "想新增", "想支援", "功能建議")
+    return any(normalized.startswith(prefix) for prefix in prefixes) or any(keyword in normalized for keyword in keywords)
 
 def extract_mark_as_read_token(event):
     token = getattr(event.message, "mark_as_read_token", "") or getattr(event.message, "markAsReadToken", "")
@@ -1028,9 +1060,9 @@ def handle_message(event):
         user_state.pop(user_id, None)
         username = get_display_name(user_id)
         last_q   = user_last_query.get(user_id, "")
-        log_feedback(username, user_id, last_q, "💡", "許願", text)
+        saved = log_wish(username, user_id, last_q, text, "許願")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
-            text="謝謝你的建議！💡 已記錄到許願池 🙏"
+            text="謝謝你的建議！💡 已記錄到許願池 🙏" if saved else "⚠️ 建議已收到，但寫入 Google Sheet 失敗，請稍後再試。"
         ))
         mark_message_as_read(mark_as_read_token)
         print(f"[許願] {username}: {text}", flush=True)
@@ -1040,7 +1072,7 @@ def handle_message(event):
     if is_direct_wish_text(text):
         username = get_display_name(user_id)
         last_q = user_last_query.get(user_id, "")
-        saved = log_feedback(username, user_id, last_q, "💡", "許願（文字）", text)
+        saved = log_wish(username, user_id, last_q, text, "許願（文字）")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="謝謝你的建議！💡 已記錄到許願池 🙏" if saved else "⚠️ 建議已收到，但寫入 Google Sheet 失敗，請稍後再試。"
         ))
@@ -1095,20 +1127,19 @@ def handle_postback(event):
         ))
     elif data == "wish":
         user_state[user_id] = "waiting_wish"
-        log_feedback(
+        log_wish(
             username,
             user_id,
             last_q,
-            "💡",
-            "許願（待輸入）",
             "使用者點擊許願按鈕，等待輸入建議",
+            "許願（待輸入）",
         )
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="💡 請說說你的建議或想新增的功能。建議用「建議：...」開頭，這樣即使服務重啟也能被記錄。"
         ))
     elif data == "wish_auto":
         wish = user_wish_text.get(user_id, last_q)
-        log_feedback(username, user_id, last_q, "💡", "許願（自動）", wish)
+        log_wish(username, user_id, last_q, wish, "許願（自動）")
         line_bot_api.reply_message(event.reply_token, TextSendMessage(
             text="💡 已加入許願池！謝謝你的支持，我們會優先考慮開發 🙏"
         ))
