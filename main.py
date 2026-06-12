@@ -1,6 +1,4 @@
 import math, requests, json, re, logging, os, threading
-import urllib.error
-import urllib.request
 
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
@@ -62,42 +60,41 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
 
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user", "content": user_content},
-        ],
-        "max_tokens": max_tokens,
-        "temperature": temperature,
-    }
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "HTTP-Referer": OPENROUTER_SITE_URL,
-        "X-Title": OPENROUTER_APP_NAME,
-    }
+    try:
+        from openai import OpenAI
+    except ImportError as e:
+        raise RuntimeError("openai package is not installed") from e
+
     print(
-        f"🔐 OpenRouter request auth: header_present={'Authorization' in headers}, key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
+        f"🔐 OpenRouter SDK auth: key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
         flush=True,
     )
-    request = urllib.request.Request(
-        "https://openrouter.ai/api/v1/chat/completions",
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST",
+    client = OpenAI(
+        base_url="https://openrouter.ai/api/v1",
+        api_key=OPENROUTER_API_KEY,
+        default_headers={
+            "HTTP-Referer": OPENROUTER_SITE_URL,
+            "X-Title": OPENROUTER_APP_NAME,
+        },
     )
     try:
-        with urllib.request.urlopen(request, timeout=60) as response:
-            body = response.read().decode("utf-8")
-        data = json.loads(body)
-        return data["choices"][0]["message"]["content"]
-    except urllib.error.HTTPError as e:
-        body = e.read().decode("utf-8", errors="replace")[:500]
-        raise RuntimeError(f"OpenRouter request failed: HTTPError {e.code}: {body}") from e
+        completion = client.chat.completions.create(
+            model=OPENROUTER_MODEL,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        return completion.choices[0].message.content or ""
     except Exception as e:
-        raise RuntimeError(f"OpenRouter request failed: {type(e).__name__}: {e}") from e
+        response = getattr(e, "response", None)
+        body = getattr(response, "text", "") if response is not None else ""
+        detail = body[:500] if body else str(e)[:500]
+        status = getattr(e, "status_code", "")
+        status_text = f" {status}" if status else ""
+        raise RuntimeError(f"OpenRouter request failed via OpenAI SDK: {type(e).__name__}{status_text}: {detail}") from e
 
 # ── Google Sheets ──────────────────────────────────────────────
 

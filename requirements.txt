@@ -1,5 +1,6 @@
 skyfield
 requests
+openai
 line-bot-sdk
 flask
 gspread
