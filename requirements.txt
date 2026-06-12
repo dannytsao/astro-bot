@@ -1,6 +1,5 @@
 skyfield
 requests
-anthropic
 line-bot-sdk
 flask
 gspread
