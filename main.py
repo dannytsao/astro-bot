@@ -19,9 +19,21 @@ def read_openrouter_api_key():
         key = raw.strip().strip('"').strip("'")
         key = re.sub(r"^Authorization:\s*", "", key, flags=re.IGNORECASE).strip()
         key = re.sub(r"^Bearer\s+", "", key, flags=re.IGNORECASE).strip()
+        key = re.sub(r"\s+", "", key)
         if key:
             return key, env_name
     return "", ""
+
+def describe_openrouter_key():
+    if not OPENROUTER_API_KEY:
+        return "not configured"
+    if OPENROUTER_API_KEY.startswith("sk-or-v1-"):
+        shape = "openrouter"
+    elif OPENROUTER_API_KEY.startswith("sk-"):
+        shape = "sk"
+    else:
+        shape = "unexpected"
+    return f"source={OPENROUTER_API_KEY_SOURCE}, length={len(OPENROUTER_API_KEY)}, shape={shape}"
 
 OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
 OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
@@ -40,6 +52,7 @@ print(
     f"🔐 OpenRouter key source: {OPENROUTER_API_KEY_SOURCE or 'not configured'}",
     flush=True,
 )
+print(f"🔐 OpenRouter key check: {describe_openrouter_key()}", flush=True)
 
 # ── OpenRouter LLM client ─────────────────────────────────────
 
@@ -47,14 +60,19 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
 
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+        "HTTP-Referer": OPENROUTER_SITE_URL,
+        "X-Title": OPENROUTER_APP_NAME,
+    }
+    print(
+        f"🔐 OpenRouter request auth: header_present={'Authorization' in headers}, key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
+        flush=True,
+    )
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
-        headers={
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": OPENROUTER_SITE_URL,
-            "X-Title": OPENROUTER_APP_NAME,
-        },
+        headers=headers,
         json={
             "model": OPENROUTER_MODEL,
             "messages": [
