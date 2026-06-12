@@ -6,8 +6,11 @@
 
 - GitHub repo: `dannytsao/astro-bot`
 - Production branch: `main`
-- Production service: Render Web Service
+- Production service: Render Web Service `astro-bot-web`
+- Production URL: `https://astro-bot-web-xlny.onrender.com`
+- Health check: `https://astro-bot-web-xlny.onrender.com/healthz`
 - Runtime entrypoint: `main.py`
+- Render import fallback: `app.py`
 - Legacy backup: `main_telegram.py`
 
 ## 工作原則
@@ -50,10 +53,24 @@ git push origin main
 Push 後若 Render auto deploy 啟動，需確認 live service：
 
 ```bash
-curl -i --max-time 30 https://astro-bot-l9ae.onrender.com/
+curl -sS https://astro-bot-web-xlny.onrender.com/healthz
 ```
 
-目前 `/` route 回 `404 Not Found` 是預期狀態；重點是 response headers 顯示 Render/gunicorn 有回應。
+至少要確認：
+
+- `ok: true`
+- `google_sheets_connected: true`
+- `openrouter_key_probe` 顯示 `ok`
+- `line_token_probe: ok`
+- `version` 符合剛推上的 commit
+
+LINE Developers 的 webhook 必須指向：
+
+```text
+https://astro-bot-web-xlny.onrender.com/callback
+```
+
+Webhook Verify 成功只代表 LINE 能打到 `/callback`，不代表 Bot 一定能回覆。若 LINE 有收到 `[收到]` log 但沒有回覆，優先檢查 `/healthz` 的 `line_token_probe` 與 Render Web Service 的 `LINE_CHANNEL_ACCESS_TOKEN`。
 
 ## Google Sheets 規格
 

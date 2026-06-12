@@ -1,5 +1,21 @@
 # CHANGELOG
 
+## 2026-06-12
+
+### Production 修復
+
+- 建立 Render Web Service `astro-bot-web`，讓 LINE Webhook 有正式 HTTP endpoint。
+- 新增 `app.py` 作為 Render 匯入 fallback，避免 autodetect 使用 `gunicorn app:app` 時找不到 Flask app。
+- 將 LINE Developers webhook 指向 `https://astro-bot-web-xlny.onrender.com/callback`。
+- 修正 LINE access token 過期時造成 `/callback` 500 的問題；LINE API 401 會被清楚記錄，不再讓 webhook 崩潰。
+- `/healthz` 新增 Google Sheets、OpenRouter、LINE access token 與 deployed version 診斷。
+
+### Lessons Learned
+
+- Webhook Verify 成功只代表 LINE 可連到 callback，不代表 Bot 可以成功回覆。
+- Render Worker 不能作為 LINE Webhook endpoint；production LINE Bot 必須跑在 Web Service。
+- 新增 `LESSONS_LEARNED_2026-06-12.md`，記錄今天完整排查流程、根因與下次部署檢查清單。
+
 ## 2026-06-10
 
 ### 修正

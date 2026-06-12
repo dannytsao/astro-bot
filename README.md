@@ -125,13 +125,36 @@
 
 ---
 
+## Production 狀態
+
+| 項目 | 說明 |
+| --- | --- |
+| Render Web Service | `astro-bot-web` |
+| Production URL | `https://astro-bot-web-xlny.onrender.com` |
+| LINE Webhook | `https://astro-bot-web-xlny.onrender.com/callback` |
+| Health Check | `https://astro-bot-web-xlny.onrender.com/healthz` |
+| GitHub Repo | `dannytsao/astro-bot` |
+| Production Branch | `main` |
+
+部署後必須確認 `/healthz`：
+
+```text
+google_sheets_connected: true
+openrouter_key_probe: ok fields=data
+line_token_probe: ok
+```
+
+2026-06-12 的 production 修復經驗已整理於 [LESSONS_LEARNED_2026-06-12.md](./LESSONS_LEARNED_2026-06-12.md)。
+
+---
+
 ## 系統資訊
 
 | 項目 | 說明 |
 | --- | --- |
 | 回應時間 | 每次查詢約 30–60 秒（v2 新增月出月落與暗空窗口計算） |
 | API 費用 | 每次查詢約 $0.002 USD；$5 可跑約 2,500 次查詢 |
-| 服務平台 | Render 免費方案，遇網路錯誤自動重啟 |
+| 服務平台 | Render Web Service Starter plan |
 | 對話記錄 | 管理員可在 Render Log 及 Google Sheets 查看查詢與反饋記錄 |
 
 
