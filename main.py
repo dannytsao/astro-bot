@@ -3,7 +3,7 @@ import hashlib, http.client, math, requests, json, re, logging, os, threading
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
 from skyfield import almanac
-from flask import Flask, request, abort
+from flask import Flask, request, abort, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
 from linebot.models import (
@@ -50,6 +50,7 @@ LINE_CHANNEL_SECRET  = os.environ.get("LINE_CHANNEL_SECRET")
 LINE_ACCESS_TOKEN    = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 GOOGLE_CREDENTIALS   = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 SPREADSHEET_ID       = os.environ.get("GOOGLE_SPREADSHEET_ID", "1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M")
+APP_VERSION          = os.environ.get("RENDER_GIT_COMMIT", "local-openrouter-healthz")[:12]
 
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler      = WebhookHandler(LINE_CHANNEL_SECRET)
@@ -61,6 +62,7 @@ print(
 )
 print(f"🔐 OpenRouter key check: {describe_openrouter_key()}", flush=True)
 print(f"🔐 OpenRouter key fingerprint: {fingerprint_openrouter_key()}", flush=True)
+print(f"🚦 App version: {APP_VERSION}", flush=True)
 
 # ── OpenRouter LLM client ─────────────────────────────────────
 
@@ -86,16 +88,22 @@ def openrouter_request(method, path, payload=None, timeout=60):
     finally:
         conn.close()
 
+OPENROUTER_KEY_PROBE_STATUS = "not_run"
+
 def probe_openrouter_key():
+    global OPENROUTER_KEY_PROBE_STATUS
     if not OPENROUTER_API_KEY:
-        print("🔐 OpenRouter key probe: skipped, no key", flush=True)
+        OPENROUTER_KEY_PROBE_STATUS = "skipped:no_key"
+        print(f"🔐 OpenRouter key probe: {OPENROUTER_KEY_PROBE_STATUS}", flush=True)
         return
     try:
         data = openrouter_request("GET", "/api/v1/key", timeout=15)
-        print(f"🔐 OpenRouter key probe: ok fields={','.join(sorted(data.keys()))}", flush=True)
+        OPENROUTER_KEY_PROBE_STATUS = f"ok fields={','.join(sorted(data.keys()))}"
+        print(f"🔐 OpenRouter key probe: {OPENROUTER_KEY_PROBE_STATUS}", flush=True)
     except Exception as e:
         message = str(e).strip() or repr(e)
-        print(f"🔐 OpenRouter key probe failed: {type(e).__name__}: {message}", flush=True)
+        OPENROUTER_KEY_PROBE_STATUS = f"failed:{type(e).__name__}: {message[:200]}"
+        print(f"🔐 OpenRouter key probe {OPENROUTER_KEY_PROBE_STATUS}", flush=True)
 
 probe_openrouter_key()
 
@@ -190,6 +198,28 @@ try:
 except Exception as e:
     print(f"⚠️ Google Sheets 連線失敗：{describe_exception(e)}", flush=True)
     ws_query = ws_feedback = None
+
+
+@app.route("/", methods=["GET"])
+def root():
+    return jsonify({"ok": True, "service": "astro-bot", "version": APP_VERSION})
+
+
+@app.route("/healthz", methods=["GET"])
+def healthz():
+    return jsonify({
+        "ok": True,
+        "version": APP_VERSION,
+        "openrouter_key_source": OPENROUTER_API_KEY_SOURCE or "not_configured",
+        "openrouter_key_shape": "openrouter" if OPENROUTER_API_KEY.startswith("sk-or-v1-") else "other",
+        "openrouter_key_length": len(OPENROUTER_API_KEY),
+        "openrouter_key_fingerprint": fingerprint_openrouter_key(),
+        "openrouter_key_probe": OPENROUTER_KEY_PROBE_STATUS,
+        "openrouter_model": OPENROUTER_MODEL,
+        "openrouter_fallback_models": openrouter_model_sequence(),
+        "google_sheets_connected": ws_query is not None and ws_feedback is not None,
+        "spreadsheet_id": SPREADSHEET_ID,
+    })
 
 def log_query(username, user_id, query, intent):
     global ws_query, ws_feedback
