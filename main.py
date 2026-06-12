@@ -816,6 +816,57 @@ def get_7timer_seeing(lat, lon, query_dates):
     return daily
 
 
+KNOWN_LOCATIONS = {
+    "日月潭": (23.865, 120.917),
+    "合歡山": (24.167, 121.283),
+    "外澳": (24.870, 121.862),
+    "墾丁": (21.945, 120.803),
+    "阿里山": (23.517, 120.800),
+    "嘉明湖": (23.250, 121.000),
+    "武陵農場": (24.367, 121.367),
+    "太平山": (24.517, 121.617),
+    "七星山": (25.167, 121.533),
+    "清境農場": (24.083, 121.167),
+    "奧萬大": (23.850, 121.083),
+    "桃源谷": (25.100, 121.867),
+    "池上": (23.124, 121.216),
+}
+
+def coerce_float(value):
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        cleaned = value.strip()
+        if cleaned:
+            return float(cleaned)
+    raise ValueError(f"not a number: {value!r}")
+
+def normalize_intent(intent, user_query):
+    if not isinstance(intent, dict):
+        raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
+
+    location_name = str(intent.get("location_name") or "").strip()
+    for name, (lat, lon) in KNOWN_LOCATIONS.items():
+        if name == location_name or name in user_query:
+            intent["location_name"] = name
+            intent["lat"] = lat
+            intent["lon"] = lon
+            break
+
+    try:
+        intent["lat"] = coerce_float(intent.get("lat"))
+        intent["lon"] = coerce_float(intent.get("lon"))
+    except (TypeError, ValueError) as e:
+        raise RuntimeError(
+            f"無法解析地點座標：{location_name or '未指定地點'}。"
+            "請換成較明確的地名，例如：墾丁、合歡山、池上、阿里山。"
+        ) from e
+
+    if not (-90 <= intent["lat"] <= 90 and -180 <= intent["lon"] <= 180):
+        raise RuntimeError(f"地點座標超出範圍：lat={intent['lat']}, lon={intent['lon']}")
+
+    return intent
+
 def parse_intent(user_query):
     today_str = date.today().isoformat()
     system = f"""你是天文攝影查詢系統的意圖解析器。今天是 {today_str}。
@@ -827,10 +878,11 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 地名座標：日月潭(23.865,120.917),合歡山(24.167,121.283),外澳(24.870,121.862),
 墾丁(21.945,120.803),阿里山(23.517,120.800),嘉明湖(23.250,121.000),
 武陵農場(24.367,121.367),太平山(24.517,121.617),七星山(25.167,121.533),
-清境農場(24.083,121.167),奧萬大(23.850,121.083),桃源谷(25.100,121.867)"""
+清境農場(24.083,121.167),奧萬大(23.850,121.083),桃源谷(25.100,121.867),
+池上(23.124,121.216)。若地名不在清單，請估算台灣地名座標；lat/lon 不可為 null。"""
     text = call_openrouter(system, user_query, max_tokens=400)
     text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
-    return json.loads(text)
+    return normalize_intent(json.loads(text), user_query)
 
 
 def match_targets(target_names):
@@ -902,7 +954,7 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
 
 
 def run_query(user_query, prefetched_intent=None):
-    intent    = prefetched_intent if prefetched_intent else parse_intent(user_query)
+    intent    = normalize_intent(prefetched_intent, user_query) if prefetched_intent else parse_intent(user_query)
     observer  = wgs84.latlon(intent["lat"], intent["lon"])
     date_start = date.fromisoformat(intent["date_start"])
     date_end   = date.fromisoformat(intent["date_end"])
