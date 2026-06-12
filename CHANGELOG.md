@@ -11,6 +11,7 @@
 - `/healthz` 新增 Google Sheets、OpenRouter、LINE access token 與 deployed version 診斷。
 - 地點解析失敗時改為反問使用者補座標；支援 `座標：23.124, 121.216`、`北緯 23.124 東經 121.216`、`lat/lon` 格式。
 - 補座標會做全球合法範圍硬檢查；台灣寬鬆範圍只提示 warning，不阻擋計算。
+- 防止地點解析幻覺替換：若使用者輸入「飛行場」等籠統地點，Bot 不可自動改用「合歡山」等其他內建地點，需反問補座標。
 
 ### Lessons Learned
 

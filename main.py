@@ -834,6 +834,7 @@ KNOWN_LOCATIONS = {
 
 TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
 TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
+AMBIGUOUS_LOCATION_TERMS = {"飛行場", "機場", "山上", "海邊", "海岸", "湖邊"}
 
 class LocationResolutionError(RuntimeError):
     def __init__(self, location_name, intent, message):
@@ -850,6 +851,31 @@ def coerce_float(value):
             return float(cleaned)
     raise ValueError(f"not a number: {value!r}")
 
+def extract_location_hint(user_query):
+    text = user_query.strip()
+    text = re.sub(r"^(今天|今晚|明天|後天|這個週末|週末|下週[一二三四五六日天]?)", "", text).strip()
+    match = re.search(r"(.+?)(?:適合|可以|能不能|可不可以|有沒有|好不好|能拍|拍)", text)
+    if not match:
+        return ""
+    hint = match.group(1).strip(" ，,。？?：:")
+    hint = re.sub(r"^(在|去|到)", "", hint).strip()
+    return hint
+
+def location_name_matches_query(location_name, user_query):
+    if not location_name:
+        return False
+    hint = extract_location_hint(user_query)
+    if location_name in user_query:
+        return True
+    if hint and (hint in location_name or location_name in hint):
+        return True
+    return False
+
+def is_ambiguous_location(location_name, user_query):
+    hint = extract_location_hint(user_query)
+    candidates = {location_name, hint}
+    return any(candidate in AMBIGUOUS_LOCATION_TERMS for candidate in candidates if candidate)
+
 def normalize_intent(intent, user_query):
     if not isinstance(intent, dict):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
@@ -860,7 +886,7 @@ def normalize_intent(intent, user_query):
     except ValueError as e:
         raise LocationResolutionError(location_name, intent, str(e)) from e
     for name, (lat, lon) in KNOWN_LOCATIONS.items():
-        if name == location_name or name in user_query:
+        if name in user_query or (name == location_name and location_name_matches_query(location_name, user_query)):
             intent["location_name"] = name
             intent["lat"] = lat
             intent["lon"] = lon
@@ -869,6 +895,22 @@ def normalize_intent(intent, user_query):
         if supplied_coordinates:
             intent["lat"], intent["lon"] = supplied_coordinates
             intent["location_name"] = location_name or "自訂座標"
+        elif is_ambiguous_location(location_name, user_query):
+            location_hint = extract_location_hint(user_query) or location_name
+            intent["location_name"] = location_hint
+            raise LocationResolutionError(
+                location_hint,
+                intent,
+                f"地點名稱過於籠統，無法可靠解析座標：{location_hint}"
+            )
+        elif location_name and not location_name_matches_query(location_name, user_query):
+            location_hint = extract_location_hint(user_query) or location_name
+            intent["location_name"] = location_hint
+            raise LocationResolutionError(
+                location_hint,
+                intent,
+                f"地點解析不可信：使用者輸入像是「{location_hint}」，但解析結果是「{location_name}」。"
+            )
 
     try:
         intent["lat"] = coerce_float(intent.get("lat"))
@@ -941,7 +983,9 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 墾丁(21.945,120.803),阿里山(23.517,120.800),嘉明湖(23.250,121.000),
 武陵農場(24.367,121.367),太平山(24.517,121.617),七星山(25.167,121.533),
 清境農場(24.083,121.167),奧萬大(23.850,121.083),桃源谷(25.100,121.867),
-池上(23.124,121.216)。若地名不在清單，請估算台灣地名座標；lat/lon 不可為 null。"""
+池上(23.124,121.216)。
+若地名不在清單，請只解析使用者實際輸入的地點，不可替換成清單中的其他地點。
+若地名太籠統或無法可靠估算，location_name 保留使用者輸入的地名，lat/lon 回 null。"""
     text = call_openrouter(system, user_query, max_tokens=400)
     text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
     return normalize_intent(json.loads(text), user_query)
