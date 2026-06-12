@@ -832,6 +832,15 @@ KNOWN_LOCATIONS = {
     "池上": (23.124, 121.216),
 }
 
+TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
+TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
+
+class LocationResolutionError(RuntimeError):
+    def __init__(self, location_name, intent, message):
+        super().__init__(message)
+        self.location_name = location_name
+        self.intent = intent
+
 def coerce_float(value):
     if isinstance(value, (int, float)):
         return float(value)
@@ -846,26 +855,79 @@ def normalize_intent(intent, user_query):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
 
     location_name = str(intent.get("location_name") or "").strip()
+    try:
+        supplied_coordinates = extract_user_coordinates(user_query)
+    except ValueError as e:
+        raise LocationResolutionError(location_name, intent, str(e)) from e
     for name, (lat, lon) in KNOWN_LOCATIONS.items():
         if name == location_name or name in user_query:
             intent["location_name"] = name
             intent["lat"] = lat
             intent["lon"] = lon
             break
+    else:
+        if supplied_coordinates:
+            intent["lat"], intent["lon"] = supplied_coordinates
+            intent["location_name"] = location_name or "自訂座標"
 
     try:
         intent["lat"] = coerce_float(intent.get("lat"))
         intent["lon"] = coerce_float(intent.get("lon"))
     except (TypeError, ValueError) as e:
-        raise RuntimeError(
+        raise LocationResolutionError(
+            location_name,
+            intent,
             f"無法解析地點座標：{location_name or '未指定地點'}。"
-            "請換成較明確的地名，例如：墾丁、合歡山、池上、阿里山。"
         ) from e
 
     if not (-90 <= intent["lat"] <= 90 and -180 <= intent["lon"] <= 180):
-        raise RuntimeError(f"地點座標超出範圍：lat={intent['lat']}, lon={intent['lon']}")
+        raise LocationResolutionError(
+            location_name,
+            intent,
+            f"地點座標超出全球合法範圍：lat={intent['lat']}, lon={intent['lon']}"
+        )
 
     return intent
+
+def is_in_taiwan_loose_range(lat, lon):
+    return (
+        TAIWAN_LOOSE_LAT_RANGE[0] <= lat <= TAIWAN_LOOSE_LAT_RANGE[1]
+        and TAIWAN_LOOSE_LON_RANGE[0] <= lon <= TAIWAN_LOOSE_LON_RANGE[1]
+    )
+
+def extract_user_coordinates(text):
+    normalized = text.strip()
+    patterns = [
+        r"(?:lat(?:itude)?|緯度|北緯)\s*[=:：]?\s*(-?\d+(?:\.\d+)?)\D+"
+        r"(?:lon(?:gitude)?|lng|經度|東經)\s*[=:：]?\s*(-?\d+(?:\.\d+)?)",
+        r"(-?\d+(?:\.\d+)?)\s*[,，、]\s*(-?\d+(?:\.\d+)?)",
+        r"(-?\d+\.\d+)\s+(-?\d+\.\d+)",
+    ]
+    for pattern in patterns:
+        match = re.search(pattern, normalized, flags=re.IGNORECASE)
+        if not match:
+            continue
+        first = float(match.group(1))
+        second = float(match.group(2))
+        if 118.0 <= first <= 123.8 and 20.0 <= second <= 26.5:
+            lat, lon = second, first
+        else:
+            lat, lon = first, second
+        if not (-90 <= lat <= 90 and -180 <= lon <= 180):
+            raise ValueError(f"座標超出全球合法範圍：lat={lat}, lon={lon}")
+        return lat, lon
+    return None
+
+def location_coordinate_prompt(location_name):
+    place = location_name or "這個地點"
+    return (
+        f"我目前無法穩定解析「{place}」的座標。\n\n"
+        "請回覆經緯度，我會接續剛剛的查詢繼續計算。\n"
+        "格式範例：\n"
+        "座標：23.124, 121.216\n"
+        "或：北緯 23.124 東經 121.216\n\n"
+        "緯度需在 -90～90，經度需在 -180～180。"
+    )
 
 def parse_intent(user_query):
     today_str = date.today().isoformat()
@@ -1221,13 +1283,15 @@ def generate_reply(result):
 
 
 # ── LINE Bot 狀態管理 ─────────────────────────────────────────
-# user_state:      {user_id: "waiting_wish"}
-# user_last_query: {user_id: "上次查詢文字"}
-# user_wish_text:  {user_id: "自動許願文字"}
+# user_state:                  {user_id: "waiting_wish" | "waiting_location_coordinates"}
+# user_last_query:             {user_id: "上次查詢文字"}
+# user_wish_text:              {user_id: "自動許願文字"}
+# user_pending_location_query: {user_id: {"text": 原查詢, "intent": 解析結果}}
 
-user_state      = {}
-user_last_query = {}
-user_wish_text  = {}
+user_state                  = {}
+user_last_query             = {}
+user_wish_text              = {}
+user_pending_location_query = {}
 
 
 def make_feedback_quick_reply():
@@ -1254,14 +1318,14 @@ def get_display_name(user_id):
         return "朋友"
 
 
-def process_and_reply(user_id, text, mark_as_read_token=""):
+def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=None, reply_prefix=""):
     """
     背景執行緒：執行天文計算後以 push_message 回傳結果。
     reply_token 30 秒過期，長時間計算須改用 push_message。
     """
     username = get_display_name(user_id)
     try:
-        intent_for_check = parse_intent(text)
+        intent_for_check = normalize_intent(prefetched_intent, text) if prefetched_intent else parse_intent(text)
         scope = check_unsupported(text, intent_for_check)
 
         if scope["has_unsupported"]:
@@ -1283,6 +1347,8 @@ def process_and_reply(user_id, text, mark_as_read_token=""):
 
         result = run_query(text, prefetched_intent=intent_for_check)
         reply  = generate_reply(result)
+        if reply_prefix:
+            reply = f"{reply_prefix}\n\n{reply}"
         user_last_query[user_id] = text
         log_query(username, user_id, text, result["intent"])
 
@@ -1303,6 +1369,19 @@ def process_and_reply(user_id, text, mark_as_read_token=""):
             ), "query reply")
         mark_message_as_read(mark_as_read_token)
         print("[回覆] 完成", flush=True)
+
+    except LocationResolutionError as e:
+        user_state[user_id] = "waiting_location_coordinates"
+        user_pending_location_query[user_id] = {
+            "text": text,
+            "intent": e.intent,
+            "location_name": e.location_name,
+        }
+        safe_push_message(user_id, TextSendMessage(
+            text=location_coordinate_prompt(e.location_name)
+        ), "location coordinate prompt")
+        mark_message_as_read(mark_as_read_token)
+        print(f"[地點待補座標] {e.location_name or 'unknown'}: {text}", flush=True)
 
     except Exception as e:
         log_unhandled_exception("process_and_reply", e)
@@ -1339,6 +1418,74 @@ def handle_message(event):
     text    = event.message.text.strip()
     mark_as_read_token = extract_mark_as_read_token(event)
     print(f"[收到] {user_id}: {text}", flush=True)
+
+    # 等待使用者補座標
+    if user_state.get(user_id) == "waiting_location_coordinates":
+        pending = user_pending_location_query.get(user_id)
+        if text in ["取消", "cancel", "Cancel", "CANCEL"]:
+            user_state.pop(user_id, None)
+            user_pending_location_query.pop(user_id, None)
+            safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消剛剛的地點補座標流程。"), "cancel location prompt")
+            mark_message_as_read(mark_as_read_token)
+            return
+        try:
+            coordinates = extract_user_coordinates(text)
+        except ValueError as e:
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text=(
+                    f"{e}\n\n"
+                    "請重新提供全球合法座標：緯度 -90～90、經度 -180～180。\n"
+                    "例如：座標：23.124, 121.216"
+                )
+            ), "invalid coordinate reply")
+            mark_message_as_read(mark_as_read_token)
+            return
+        if not coordinates:
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text=(
+                    "我還是讀不到經緯度。\n\n"
+                    "請回覆例如：\n"
+                    "座標：23.124, 121.216\n"
+                    "或：北緯 23.124 東經 121.216\n\n"
+                    "若不想繼續，請回覆「取消」。"
+                )
+            ), "missing coordinate reply")
+            mark_message_as_read(mark_as_read_token)
+            return
+        if not pending:
+            user_state.pop(user_id, None)
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text="找不到上一筆待補座標查詢，請重新輸入完整問題。"
+            ), "missing pending location query")
+            mark_message_as_read(mark_as_read_token)
+            return
+
+        lat, lon = coordinates
+        intent = dict(pending.get("intent") or {})
+        intent["lat"] = lat
+        intent["lon"] = lon
+        intent["location_name"] = pending.get("location_name") or intent.get("location_name") or "自訂座標"
+        user_state.pop(user_id, None)
+        user_pending_location_query.pop(user_id, None)
+
+        warning = ""
+        if not is_in_taiwan_loose_range(lat, lon):
+            warning = "⚠️ 這組座標看起來不在台灣常用範圍內，我仍可計算，但請確認座標是否正確。"
+        safe_reply_message(event.reply_token, TextSendMessage(
+            text=(
+                f"收到座標：{lat:.6f}, {lon:.6f}\n"
+                + (f"{warning}\n" if warning else "")
+                + "🔭 我會接續剛剛的查詢開始計算。"
+            )
+        ), "coordinate accepted reply")
+        mark_message_as_read(mark_as_read_token)
+        thread = threading.Thread(
+            target=process_and_reply,
+            args=(user_id, pending["text"], mark_as_read_token, intent, warning),
+            daemon=True,
+        )
+        thread.start()
+        return
 
     # 許願等待狀態
     if user_state.get(user_id) == "waiting_wish":

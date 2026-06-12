@@ -9,6 +9,8 @@
 - 將 LINE Developers webhook 指向 `https://astro-bot-web-xlny.onrender.com/callback`。
 - 修正 LINE access token 過期時造成 `/callback` 500 的問題；LINE API 401 會被清楚記錄，不再讓 webhook 崩潰。
 - `/healthz` 新增 Google Sheets、OpenRouter、LINE access token 與 deployed version 診斷。
+- 地點解析失敗時改為反問使用者補座標；支援 `座標：23.124, 121.216`、`北緯 23.124 東經 121.216`、`lat/lon` 格式。
+- 補座標會做全球合法範圍硬檢查；台灣寬鬆範圍只提示 warning，不阻擋計算。
 
 ### Lessons Learned
 
