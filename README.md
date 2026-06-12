@@ -164,13 +164,13 @@
 ```
 LINE 訊息（Webhook → Flask）
     ↓
-意圖解析（Claude API）
+意圖解析（OpenRouter API）
     ↓
 天文計算（Skyfield + de421.bsp）
     ↓ 月出月落、天文薄暮、暗空窗口、銀河構圖方位角
 氣象預報（Open-Meteo API）
     ↓
-回覆生成（Claude API）
+回覆生成（OpenRouter API）
     ↓
 反饋記錄（Google Sheets API）
 ```
@@ -183,7 +183,11 @@ LINE 訊息（Webhook → Flask）
 
 | 變數名稱 | 說明 |
 | --- | --- |
-| `ANTHROPIC_API_KEY` | Claude API 金鑰 |
+| `OPENROUTER_API_KEY` | OpenRouter API 金鑰 |
+| `OPENROUTER_MODEL` | OpenRouter 模型，預設 `anthropic/claude-sonnet-4.5` |
+| `OPENROUTER_SITE_URL` | OpenRouter attribution URL，預設 Render service URL |
+| `OPENROUTER_APP_NAME` | OpenRouter attribution app name，預設 `astro-bot` |
+| `ANTHROPIC_API_KEY` | Legacy fallback；若暫時未建立 `OPENROUTER_API_KEY`，可讀取此變數中的 OpenRouter key |
 | `LINE_CHANNEL_SECRET` | LINE Bot Channel Secret（驗證 Webhook 簽章） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot Channel Access Token（發送訊息） |
 | `GOOGLE_CREDENTIALS_JSON` | Google 服務帳號 JSON 金鑰（完整內容） |

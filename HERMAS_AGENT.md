@@ -14,7 +14,7 @@
 
 1. 每次變更前先確認目前 repo、branch、dirty worktree。
 2. 只修改與需求直接相關的檔案。
-3. Render environment API key 已由使用者改為 OpenRouter key；在 production code 完成 OpenRouter endpoint 支援前，不要假設現行 Anthropic SDK 路徑可以正常呼叫。
+3. Production code 走 OpenRouter chat completions；優先使用 `OPENROUTER_API_KEY`，並暫時支援 `ANTHROPIC_API_KEY` 作為 legacy fallback。
 4. 不混入 OpenRouter 或其他暫存中的實驗變更，除非使用者明確要求。
 5. `查詢記錄` 與 `用戶反饋` 是不同用途，不可為了修一邊而破壞另一邊格式。
 6. 所有 production code 變更完成後，一律先 dry run，再 commit/push/deploy。

@@ -23,7 +23,7 @@
 ```
 用戶 LINE 訊息（Webhook → Flask）
     ↓
-意圖解析（Claude API - parse_intent）
+意圖解析（OpenRouter API - parse_intent）
     ↓
 超出範圍攔截（check_unsupported）
     ↓
@@ -36,7 +36,7 @@
     ↓
 氣象狀態評估（weather_status）
     ↓
-回覆生成（Claude API - generate_reply，動態 system prompt）
+回覆生成（OpenRouter API - generate_reply，動態 system prompt）
     ↓
 反饋記錄（Google Sheets API）
 ```
@@ -47,7 +47,11 @@
 
 | 變數名稱 | 說明 |
 |---|---|
-| `ANTHROPIC_API_KEY` | Claude API 金鑰 |
+| `OPENROUTER_API_KEY` | OpenRouter API 金鑰 |
+| `OPENROUTER_MODEL` | OpenRouter 模型，預設 `anthropic/claude-sonnet-4.5` |
+| `OPENROUTER_SITE_URL` | OpenRouter attribution URL，預設 Render service URL |
+| `OPENROUTER_APP_NAME` | OpenRouter attribution app name，預設 `astro-bot` |
+| `ANTHROPIC_API_KEY` | Legacy fallback；若暫時未建立 `OPENROUTER_API_KEY`，可讀取此變數中的 OpenRouter key |
 | `LINE_CHANNEL_SECRET` | LINE Bot Channel Secret（驗證 Webhook 簽章） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot Channel Access Token（發送訊息） |
 | `GOOGLE_CREDENTIALS_JSON` | Google 服務帳號 JSON 金鑰 |

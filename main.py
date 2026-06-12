@@ -10,21 +10,55 @@ from linebot.models import (
     MessageEvent, PostbackEvent, TextMessage, TextSendMessage,
     QuickReply, QuickReplyButton, PostbackAction,
 )
-import anthropic
 import gspread
 from google.oauth2.service_account import Credentials
 
-ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
+OPENROUTER_API_KEY   = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
+OPENROUTER_SITE_URL  = os.environ.get("OPENROUTER_SITE_URL", "https://astro-bot-l9ae.onrender.com")
+OPENROUTER_APP_NAME  = os.environ.get("OPENROUTER_APP_NAME", "astro-bot")
 LINE_CHANNEL_SECRET  = os.environ.get("LINE_CHANNEL_SECRET")
 LINE_ACCESS_TOKEN    = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 GOOGLE_CREDENTIALS   = os.environ.get("GOOGLE_CREDENTIALS_JSON")
 SPREADSHEET_ID       = os.environ.get("GOOGLE_SPREADSHEET_ID", "1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M")
 
-client      = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler      = WebhookHandler(LINE_CHANNEL_SECRET)
 app          = Flask(__name__)
 logging.basicConfig(level=logging.ERROR)
+
+# ── OpenRouter LLM client ─────────────────────────────────────
+
+def call_openrouter(system, user_content, max_tokens, temperature=0.2):
+    if not OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY is not configured")
+
+    response = requests.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        headers={
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": OPENROUTER_SITE_URL,
+            "X-Title": OPENROUTER_APP_NAME,
+        },
+        json={
+            "model": OPENROUTER_MODEL,
+            "messages": [
+                {"role": "system", "content": system},
+                {"role": "user", "content": user_content},
+            ],
+            "max_tokens": max_tokens,
+            "temperature": temperature,
+        },
+        timeout=60,
+    )
+    try:
+        response.raise_for_status()
+        data = response.json()
+        return data["choices"][0]["message"]["content"]
+    except Exception as e:
+        body = response.text[:500] if response is not None else ""
+        raise RuntimeError(f"OpenRouter request failed: {type(e).__name__}: {body}") from e
 
 # ── Google Sheets ──────────────────────────────────────────────
 
@@ -584,11 +618,8 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 墾丁(21.945,120.803),阿里山(23.517,120.800),嘉明湖(23.250,121.000),
 武陵農場(24.367,121.367),太平山(24.517,121.617),七星山(25.167,121.533),
 清境農場(24.083,121.167),奧萬大(23.850,121.083),桃源谷(25.100,121.867)"""
-    resp = client.messages.create(
-        model="claude-sonnet-4-5", max_tokens=400, system=system,
-        messages=[{"role": "user", "content": user_query}]
-    )
-    text = re.sub(r"```(?:json)?|```", "", resp.content[0].text.strip()).strip()
+    text = call_openrouter(system, user_query, max_tokens=400)
+    text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
     return json.loads(text)
 
 
@@ -907,9 +938,9 @@ def generate_reply(result):
 - 天況不佳時主動建議替代方案（改期、換地點、轉攻其他題材）
 - 總長不超過 500 字"""
 
-    resp = client.messages.create(
-        model="claude-sonnet-4-5", max_tokens=1000, system=system,
-        messages=[{"role": "user", "content":
+    return call_openrouter(
+        system,
+        (
             f"查詢類型：{'指定標的' if intent['query_type']=='A' else '開放探索'}\n"
             f"地點：{intent['location_name']}\n"
             f"日期：{intent['date_start']} ～ {intent['date_end']}\n"
@@ -922,9 +953,9 @@ def generate_reply(result):
             f"月相與暗空窗口：\n{ms}\n\n"
             + (f"銀河構圖資訊：\n{mw_str}\n\n" if mw_str is not None else "")
             + f"流星雨：{ss}"
-        }]
+        ),
+        max_tokens=1000,
     )
-    return resp.content[0].text
 
 
 # ── LINE Bot 狀態管理 ─────────────────────────────────────────

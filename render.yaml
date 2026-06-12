@@ -5,8 +5,16 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: python main.py
     envVars:
+      - key: OPENROUTER_API_KEY
+        sync: false
       - key: ANTHROPIC_API_KEY
         sync: false
+      - key: OPENROUTER_MODEL
+        value: anthropic/claude-sonnet-4.5
+      - key: OPENROUTER_SITE_URL
+        value: https://astro-bot-l9ae.onrender.com
+      - key: OPENROUTER_APP_NAME
+        value: astro-bot
       - key: LINE_CHANNEL_SECRET
         sync: false
       - key: LINE_CHANNEL_ACCESS_TOKEN
