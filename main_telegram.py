@@ -14,7 +14,7 @@ from google.oauth2.service_account import Credentials
 ANTHROPIC_API_KEY = os.environ.get("ANTHROPIC_API_KEY")
 TELEGRAM_TOKEN    = os.environ.get("TELEGRAM_BOT_TOKEN")
 GOOGLE_CREDENTIALS = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-SPREADSHEET_ID    = "1fYmucd6mB8nlzblJsl44QDerUjx-1cI3Ll9EgO_KPnU"
+SPREADSHEET_ID    = os.environ.get("GOOGLE_SPREADSHEET_ID", "1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M")
 
 client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 logging.basicConfig(level=logging.ERROR)

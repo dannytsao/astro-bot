@@ -18,7 +18,7 @@ ANTHROPIC_API_KEY    = os.environ.get("ANTHROPIC_API_KEY")
 LINE_CHANNEL_SECRET  = os.environ.get("LINE_CHANNEL_SECRET")
 LINE_ACCESS_TOKEN    = os.environ.get("LINE_CHANNEL_ACCESS_TOKEN")
 GOOGLE_CREDENTIALS   = os.environ.get("GOOGLE_CREDENTIALS_JSON")
-SPREADSHEET_ID       = "1fYmucd6mB8nlzblJsl44QDerUjx-1cI3Ll9EgO_KPnU"
+SPREADSHEET_ID       = os.environ.get("GOOGLE_SPREADSHEET_ID", "1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M")
 
 client      = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
 line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
@@ -45,25 +45,20 @@ def init_sheets():
     except gspread.WorksheetNotFound:
         ws_feedback = sh.add_worksheet("用戶反饋", rows=1000, cols=8)
         ws_feedback.append_row(["時間","用戶名","用戶ID","查詢內容","評分","類型","許願內容"])
-    try:
-        ws_wish = sh.worksheet("許願池")
-    except gspread.WorksheetNotFound:
-        ws_wish = sh.add_worksheet("許願池", rows=1000, cols=7)
-        ws_wish.append_row(["時間","用戶名","用戶ID","來源查詢","類型","內容","狀態"])
-    return ws_query, ws_feedback, ws_wish
+    return ws_query, ws_feedback
 
 try:
-    ws_query, ws_feedback, ws_wish = init_sheets()
+    ws_query, ws_feedback = init_sheets()
     print("✅ Google Sheets 連線成功", flush=True)
 except Exception as e:
     print(f"⚠️ Google Sheets 連線失敗：{e}", flush=True)
-    ws_query = ws_feedback = ws_wish = None
+    ws_query = ws_feedback = None
 
 def log_query(username, user_id, query, intent):
-    global ws_query, ws_feedback, ws_wish
+    global ws_query, ws_feedback
     if not ws_query:
         try:
-            ws_query, ws_feedback, ws_wish = init_sheets()
+            ws_query, ws_feedback = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 查詢記錄初始化失敗：{e}", flush=True)
     if not ws_query:
@@ -81,10 +76,10 @@ def log_query(username, user_id, query, intent):
         print(f"[Sheets 錯誤] {e}", flush=True)
 
 def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
-    global ws_query, ws_feedback, ws_wish
+    global ws_query, ws_feedback
     if not ws_feedback:
         try:
-            ws_query, ws_feedback, ws_wish = init_sheets()
+            ws_query, ws_feedback = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{e}", flush=True)
     if not ws_feedback:
@@ -99,7 +94,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
     except Exception as e:
         print(f"[Sheets 錯誤] {e}", flush=True)
         try:
-            ws_query, ws_feedback, ws_wish = init_sheets()
+            ws_query, ws_feedback = init_sheets()
             ws_feedback.append_row([
                 datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
                 username, str(user_id), query, rating, feedback_type, wish,
@@ -111,30 +106,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
             return False
 
 def log_wish(username, user_id, query, wish, wish_type="許願"):
-    global ws_query, ws_feedback, ws_wish
-    saved_feedback = log_feedback(username, user_id, query, "💡", wish_type, wish)
-    if not ws_wish:
-        try:
-            ws_query, ws_feedback, ws_wish = init_sheets()
-        except Exception as e:
-            print(f"[Sheets 錯誤] 許願池初始化失敗：{e}", flush=True)
-    if not ws_wish:
-        return saved_feedback
-    try:
-        ws_wish.append_row([
-            datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
-            username,
-            str(user_id),
-            query,
-            wish_type,
-            wish,
-            "new",
-        ])
-        print(f"[Sheets] 已記錄許願池：{wish_type}", flush=True)
-        return True
-    except Exception as e:
-        print(f"[Sheets 錯誤] 許願池寫入失敗：{e}", flush=True)
-        return saved_feedback
+    return log_feedback(username, user_id, query, "💡", wish_type, wish)
 
 def is_direct_wish_text(text):
     normalized = text.strip().lower()

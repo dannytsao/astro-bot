@@ -13,3 +13,5 @@ services:
         sync: false
       - key: GOOGLE_CREDENTIALS_JSON
         sync: false
+      - key: GOOGLE_SPREADSHEET_ID
+        value: 1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M

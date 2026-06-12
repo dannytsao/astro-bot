@@ -187,3 +187,4 @@ LINE 訊息（Webhook → Flask）
 | `LINE_CHANNEL_SECRET` | LINE Bot Channel Secret（驗證 Webhook 簽章） |
 | `LINE_CHANNEL_ACCESS_TOKEN` | LINE Bot Channel Access Token（發送訊息） |
 | `GOOGLE_CREDENTIALS_JSON` | Google 服務帳號 JSON 金鑰（完整內容） |
+| `GOOGLE_SPREADSHEET_ID` | Google Sheet 檔案 ID，預設 `1u-IDQPi0g-mFxPDetdV46p90xRgLAQZ3Jz90brLl6-M` |
