@@ -2,6 +2,8 @@
 
 > 本文件供 Claude Code / Cowork 讀取，提供專案完整背景與工作指引。
 
+> 開發流程以 `HERMAS_AGENT.md` 為主規範。任何 production 變更都要先 dry run，確認無誤後才 commit/push/deploy。
+
 ---
 
 ## 專案概述
