@@ -256,8 +256,16 @@ def init_sheets():
     try:
         ws_query = sh.worksheet("查詢記錄")
     except gspread.WorksheetNotFound:
-        ws_query = sh.add_worksheet("查詢記錄", rows=1000, cols=10)
-        ws_query.append_row(["時間","用戶名","用戶ID","查詢內容","地點","日期區間","標的","類型"])
+        ws_query = sh.add_worksheet("查詢記錄", rows=1000, cols=12)
+        ws_query.append_row(["時間","用戶名","用戶ID","查詢內容","地點","日期區間","標的","類型","資料品質摘要","資料品質JSON"])
+    try:
+        headers = ws_query.row_values(1)
+        if len(headers) < 9 or headers[8] != "資料品質摘要":
+            ws_query.update_cell(1, 9, "資料品質摘要")
+        if len(headers) < 10 or headers[9] != "資料品質JSON":
+            ws_query.update_cell(1, 10, "資料品質JSON")
+    except Exception as e:
+        print(f"[Sheets 警告] 查詢記錄欄位檢查失敗：{describe_exception(e)}", flush=True)
     try:
         ws_feedback = sh.worksheet("用戶反饋")
     except gspread.WorksheetNotFound:
@@ -298,7 +306,7 @@ def healthz():
         "spreadsheet_id": SPREADSHEET_ID,
     })
 
-def log_query(username, user_id, query, intent):
+def log_query(username, user_id, query, intent, data_quality=None):
     global ws_query, ws_feedback
     if not ws_query:
         try:
@@ -315,6 +323,8 @@ def log_query(username, user_id, query, intent):
             f"{intent.get('date_start','')} ～ {intent.get('date_end','')}",
             ", ".join(intent.get("targets",[])) or "開放探索",
             "A" if intent.get("query_type")=="A" else "B",
+            format_data_quality_for_log(data_quality or {}),
+            json.dumps(data_quality or {}, ensure_ascii=False),
         ])
     except Exception as e:
         print(f"[Sheets 錯誤] {describe_exception(e)}", flush=True)
@@ -730,18 +740,26 @@ def check_weather_multi(lat, lon, query_dates):
     today = date.today()
     max_d = today + timedelta(days=15)
     valid = [d for d in query_dates if today <= d <= max_d]
-    fb = {"cloud_cover": -1, "humidity": -1, "temp_c": -1,
-          "dew_point_c": -1, "dew_risk": False, "good_weather": True,
-          "visibility_km": -1}
+    def weather_missing(reason):
+        return {
+            "cloud_cover": -1, "humidity": -1, "temp_c": -1,
+            "dew_point_c": -1, "dew_risk": False, "good_weather": False,
+            "visibility_km": -1, "data_status": "missing",
+            "data_source": "Open-Meteo", "missing_reason": reason,
+        }
     if not valid:
-        return {d: fb for d in query_dates}
+        return {d: weather_missing("查詢日期超出 Open-Meteo 預報範圍 15 天") for d in query_dates}
     url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
            f"&hourly=cloud_cover,visibility,relative_humidity_2m,temperature_2m,dew_point_2m"
            f"&start_date={min(valid).isoformat()}&end_date={max(valid).isoformat()}"
            f"&timezone=Asia%2FTaipei")
-    raw = requests.get(url, timeout=10).json()
+    try:
+        raw = requests.get(url, timeout=10).json()
+    except Exception as e:
+        print(f"[Open-Meteo 錯誤] {type(e).__name__}: {e}", flush=True)
+        return {d: weather_missing(f"Open-Meteo API 錯誤：{type(e).__name__}") for d in query_dates}
     if "hourly" not in raw:
-        return {d: fb for d in query_dates}
+        return {d: weather_missing("Open-Meteo 回傳缺少 hourly 資料") for d in query_dates}
     data = raw["hourly"]
     hi   = {}
     for i, t_str in enumerate(data["time"]):
@@ -756,7 +774,7 @@ def check_weather_multi(lat, lon, query_dates):
     daily = {}
     for d in query_dates:
         if d not in valid:
-            daily[d] = fb
+            daily[d] = weather_missing("查詢日期超出 Open-Meteo 預報範圍 15 天")
             continue
         night = []
         for h in [20, 21, 22, 23, 0, 1, 2]:
@@ -776,12 +794,21 @@ def check_weather_multi(lat, lon, query_dates):
                 "dew_risk":       (at - ad) < 1.5,
                 "good_weather":   ac <= 40,
                 "visibility_km":  av,
+                "data_status":    "ok",
+                "data_source":    "Open-Meteo",
+                "missing_reason": "",
             }
+        else:
+            daily[d] = weather_missing("Open-Meteo 回傳中缺少夜間時段資料")
     return daily
 
 
 def get_7timer_seeing(lat, lon, query_dates):
-    fallback = {"seeing": -1, "transparency": -1}
+    def seeing_missing(reason):
+        return {
+            "seeing": -1, "transparency": -1, "data_status": "missing",
+            "data_source": "7Timer", "missing_reason": reason,
+        }
     try:
         url = (f"http://www.7timer.info/bin/astro.php"
                f"?lon={lon}&lat={lat}&ac=0&unit=metric&output=json&tzoffset=8")
@@ -789,7 +816,7 @@ def get_7timer_seeing(lat, lon, query_dates):
         init_dt = datetime.strptime(raw["init"], "%Y%m%d%H").replace(tzinfo=timezone.utc)
     except Exception as e:
         print(f"[7Timer 錯誤] {e}", flush=True)
-        return {d: fallback for d in query_dates}
+        return {d: seeing_missing(f"7Timer API 錯誤：{type(e).__name__}") for d in query_dates}
     tz_tst = timezone(timedelta(hours=8))
     hourly = {}
     for item in raw.get("dataseries", []):
@@ -810,9 +837,12 @@ def get_7timer_seeing(lat, lon, query_dates):
             daily[d] = {
                 "seeing":       round(sum(x["seeing"]       for x in night) / len(night), 1),
                 "transparency": round(sum(x["transparency"] for x in night) / len(night), 1),
+                "data_status":  "ok",
+                "data_source":  "7Timer",
+                "missing_reason": "",
             }
         else:
-            daily[d] = fallback
+            daily[d] = seeing_missing("7Timer 回傳中缺少夜間視寧度/透明度資料")
     return daily
 
 
@@ -1002,6 +1032,78 @@ def match_targets(target_names):
                     matched.append(t)
     return matched
 
+def find_unmatched_targets(target_names, matched_targets):
+    if not target_names:
+        return []
+    unmatched = []
+    for name in target_names:
+        found = any(
+            name.lower() in t["name"].lower() or t["name"].lower() in name.lower()
+            for t in matched_targets
+        )
+        if not found:
+            unmatched.append(name)
+    return unmatched
+
+def summarize_data_quality(intent, query_dates, weather, seeing_data, matched_targets, unmatched_targets):
+    weather_missing = [
+        {
+            "date": d.isoformat(),
+            "reason": weather.get(d, {}).get("missing_reason", "氣象資料缺失"),
+        }
+        for d in query_dates
+        if weather.get(d, {}).get("data_status") != "ok"
+    ]
+    seeing_missing = [
+        {
+            "date": d.isoformat(),
+            "reason": seeing_data.get(d, {}).get("missing_reason", "視寧度資料缺失"),
+        }
+        for d in query_dates
+        if seeing_data.get(d, {}).get("data_status") != "ok"
+    ]
+    target_status = "ok"
+    if intent.get("targets") and unmatched_targets:
+        target_status = "partial" if matched_targets else "missing"
+    return {
+        "policy": "no_guessing_without_evidence",
+        "weather": {
+            "source": "Open-Meteo",
+            "status": "missing" if len(weather_missing) == len(query_dates) else ("partial" if weather_missing else "ok"),
+            "missing": weather_missing,
+        },
+        "seeing": {
+            "source": "7Timer",
+            "status": "missing" if len(seeing_missing) == len(query_dates) else ("partial" if seeing_missing else "ok"),
+            "missing": seeing_missing,
+        },
+        "celestial_positions": {
+            "source": "Skyfield + internal target catalog",
+            "status": target_status,
+            "matched_targets": [t["name"] for t in matched_targets],
+            "unmatched_targets": unmatched_targets,
+        },
+    }
+
+def format_data_quality_for_log(data_quality):
+    issues = []
+    weather = data_quality.get("weather", {})
+    seeing = data_quality.get("seeing", {})
+    celestial = data_quality.get("celestial_positions", {})
+    location = data_quality.get("location", {})
+    if location.get("status") and location.get("status") != "ok":
+        issues.append(f"location:{location.get('status')}:{location.get('requested_location', '')}")
+    if weather.get("status") and weather.get("status") != "ok":
+        dates = ", ".join(item["date"] for item in weather.get("missing", []))
+        issues.append(f"weather:{weather.get('status')}:{dates or 'none'}")
+    if seeing.get("status") and seeing.get("status") != "ok":
+        dates = ", ".join(item["date"] for item in seeing.get("missing", []))
+        issues.append(f"seeing:{seeing.get('status')}:{dates or 'none'}")
+    if celestial.get("status") and celestial.get("status") != "ok":
+        targets = ", ".join(celestial.get("unmatched_targets", []))
+        issues.append(f"celestial:{celestial.get('status')}:{targets or 'none'}")
+    return "ok" if not issues else " | ".join(issues)
+
 
 # ── 超出範圍偵測 ───────────────────────────────────────────────
 
@@ -1069,6 +1171,7 @@ def run_query(user_query, prefetched_intent=None):
     moon_info = get_moon_info(observer, query_dates)
     dark_windows_by_date = {m["date"]: m["dark_windows"] for m in moon_info}
     matched_targets = match_targets(intent.get("targets", []))
+    unmatched_targets = find_unmatched_targets(intent.get("targets", []), matched_targets)
     is_galaxy_query = any(t.get("type") == "galaxy" for t in matched_targets)
     all_windows = []
     for target in matched_targets:
@@ -1078,6 +1181,9 @@ def run_query(user_query, prefetched_intent=None):
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
     weather     = check_weather_multi(intent["lat"], intent["lon"], query_dates)
     seeing_data = get_7timer_seeing(intent["lat"], intent["lon"], query_dates)
+    data_quality = summarize_data_quality(
+        intent, query_dates, weather, seeing_data, matched_targets, unmatched_targets
+    )
     for w in all_windows:
         wx = weather.get(w["datetime_tst"].date(), {})
         sd = seeing_data.get(w["datetime_tst"].date(), {})
@@ -1124,6 +1230,7 @@ def run_query(user_query, prefetched_intent=None):
         "avg_visibility_km":         avg_visibility_km,
         "avg_seeing":                avg_seeing,
         "avg_transparency":          avg_transparency,
+        "data_quality":              data_quality,
     }
 
 
@@ -1141,6 +1248,7 @@ def generate_reply(result):
     moon_info = result["moon_info"]
     showers   = result["showers"]
     mw_comp   = result["mw_composition_by_date"]
+    data_quality = result.get("data_quality", {})
 
     windows_for_llm = good if good else sorted(
         all_wins, key=lambda w: w.get("alt_deg", 0), reverse=True
@@ -1253,7 +1361,24 @@ def generate_reply(result):
     else:
         weather_instruction = "✅ 氣象條件良好，正常提供完整分析。"
 
+    if weather_status in ("out_of_range", "unknown"):
+        candidate_context = "（氣象資料不足，以下僅為天文窗口供參考）"
+    elif weather_fallback:
+        candidate_context = "（天氣不佳，以下為天文窗口供參考）"
+    else:
+        candidate_context = ""
+
+    data_quality_text = json.dumps(data_quality, ensure_ascii=False)
+
     system = f"""你是專業天文攝影顧問，熟悉台灣各地拍攝環境。繁體中文，親切專業。
+
+【硬性資料原則：不可猜測】
+- 你只能根據輸入資料作答；沒有提供的資料不可自行推論、補齊、猜測或用常識填空。
+- 若資料狀態是 missing、partial、N/A、-1、空陣列或無資料，必須明確說「目前沒有資料」或「資料不足」，不可說成好/壞/可拍。
+- 氣象預報只能依 Open-Meteo 資料；Open-Meteo missing 時，不可評論雲量、濕度、能見度、天氣好壞。
+- 視寧度/透明度只能依 7Timer 資料；7Timer missing 時，不可評論視寧度或透明度好壞。
+- 天體位置只能依 Skyfield 與內建標的資料庫。若 data_quality.celestial_positions 有 unmatched_targets，必須明確說這些標的目前沒有位置資料，不可創造座標或觀測時刻。
+- 若資料不足，仍可提供「已知的天文資料」與「需要補哪些資料」，但結論必須標示限制。
 
 【重要】氣象條件是第一優先判斷：
 {weather_instruction}
@@ -1317,7 +1442,8 @@ def generate_reply(result):
             f"夜間平均能見度：{f'{avg_visibility_km} km' if avg_visibility_km >= 0 else 'N/A'}\n"
             f"夜間平均視寧度（7Timer）：{f'{avg_seeing}/8（1=最佳）' if avg_seeing > 0 else 'N/A'}\n"
             f"夜間平均大氣透明度（7Timer）：{f'{avg_transparency}/8（1=最佳）' if avg_transparency > 0 else 'N/A'}\n\n"
-            f"候選時刻{'（天氣不佳，以下為天文窗口供參考）' if weather_fallback else ''}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
+            f"資料品質與缺資料紀錄：\n{data_quality_text}\n\n"
+            f"候選時刻{candidate_context}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             + (f"銀河構圖資訊：\n{mw_str}\n\n" if mw_str is not None else "")
             + f"流星雨：{ss}"
@@ -1394,7 +1520,7 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
         if reply_prefix:
             reply = f"{reply_prefix}\n\n{reply}"
         user_last_query[user_id] = text
-        log_query(username, user_id, text, result["intent"])
+        log_query(username, user_id, text, result["intent"], result.get("data_quality"))
 
         if scope["has_comet_warning"]:
             comet_notice = (
@@ -1421,6 +1547,15 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
             "intent": e.intent,
             "location_name": e.location_name,
         }
+        log_query(username, user_id, text, e.intent or {}, {
+            "policy": "no_guessing_without_evidence",
+            "location": {
+                "status": "missing",
+                "requested_location": e.location_name or "",
+                "reason": str(e),
+                "action": "asked_user_for_coordinates",
+            },
+        })
         safe_push_message(user_id, TextSendMessage(
             text=location_coordinate_prompt(e.location_name)
         ), "location coordinate prompt")
