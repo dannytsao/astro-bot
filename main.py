@@ -42,7 +42,8 @@ def fingerprint_openrouter_key():
     return hashlib.sha256(OPENROUTER_API_KEY.encode("utf-8")).hexdigest()[:12]
 
 OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
-OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
+OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
+OPENROUTER_FALLBACK_MODELS = os.environ.get("OPENROUTER_FALLBACK_MODELS", "google/gemini-2.5-flash,openai/gpt-4o-mini")
 OPENROUTER_SITE_URL  = os.environ.get("OPENROUTER_SITE_URL", "https://astro-bot-l9ae.onrender.com")
 OPENROUTER_APP_NAME  = os.environ.get("OPENROUTER_APP_NAME", "astro-bot")
 LINE_CHANNEL_SECRET  = os.environ.get("LINE_CHANNEL_SECRET")
@@ -98,6 +99,15 @@ def probe_openrouter_key():
 
 probe_openrouter_key()
 
+def openrouter_model_sequence():
+    models = [OPENROUTER_MODEL]
+    models.extend(m.strip() for m in OPENROUTER_FALLBACK_MODELS.split(",") if m.strip())
+    deduped = []
+    for model in models:
+        if model not in deduped:
+            deduped.append(model)
+    return deduped
+
 def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
         raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
@@ -106,23 +116,31 @@ def call_openrouter(system, user_content, max_tokens, temperature=0.2):
         f"🔐 OpenRouter raw HTTPS auth: key_length={len(OPENROUTER_API_KEY)}, key_shape={describe_openrouter_key()}",
         flush=True,
     )
-    try:
-        data = openrouter_request(
-            "POST",
-            "/api/v1/chat/completions",
-            {
-                "model": OPENROUTER_MODEL,
-                "messages": [
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user_content},
-                ],
-                "max_tokens": max_tokens,
-                "temperature": temperature,
-            },
-        )
-        return data["choices"][0]["message"]["content"] or ""
-    except Exception as e:
-        raise RuntimeError(f"OpenRouter request failed via raw HTTPS: {describe_exception(e)}") from e
+    errors = []
+    for model in openrouter_model_sequence():
+        try:
+            print(f"🤖 OpenRouter model attempt: {model}", flush=True)
+            data = openrouter_request(
+                "POST",
+                "/api/v1/chat/completions",
+                {
+                    "model": model,
+                    "messages": [
+                        {"role": "system", "content": system},
+                        {"role": "user", "content": user_content},
+                    ],
+                    "max_tokens": max_tokens,
+                    "temperature": temperature,
+                },
+            )
+            if model != OPENROUTER_MODEL:
+                print(f"🤖 OpenRouter fallback model succeeded: {model}", flush=True)
+            return data["choices"][0]["message"]["content"] or ""
+        except Exception as e:
+            error = describe_exception(e)
+            errors.append(f"{model}: {error}")
+            print(f"⚠️ OpenRouter model failed: {model}: {error}", flush=True)
+    raise RuntimeError(f"OpenRouter request failed via raw HTTPS: {' | '.join(errors)}")
 
 # ── Google Sheets ──────────────────────────────────────────────
 

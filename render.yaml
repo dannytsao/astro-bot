@@ -10,7 +10,9 @@ services:
       - key: ANTHROPIC_API_KEY
         sync: false
       - key: OPENROUTER_MODEL
-        value: anthropic/claude-sonnet-4.5
+        value: google/gemini-2.5-flash
+      - key: OPENROUTER_FALLBACK_MODELS
+        value: google/gemini-2.5-flash,openai/gpt-4o-mini
       - key: OPENROUTER_SITE_URL
         value: https://astro-bot-l9ae.onrender.com
       - key: OPENROUTER_APP_NAME
