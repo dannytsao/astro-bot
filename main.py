@@ -13,7 +13,17 @@ from linebot.models import (
 import gspread
 from google.oauth2.service_account import Credentials
 
-OPENROUTER_API_KEY   = os.environ.get("OPENROUTER_API_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+def read_openrouter_api_key():
+    for env_name in ("OPENROUTER_API_KEY", "ANTHROPIC_API_KEY"):
+        raw = os.environ.get(env_name, "")
+        key = raw.strip().strip('"').strip("'")
+        key = re.sub(r"^Authorization:\s*", "", key, flags=re.IGNORECASE).strip()
+        key = re.sub(r"^Bearer\s+", "", key, flags=re.IGNORECASE).strip()
+        if key:
+            return key, env_name
+    return "", ""
+
+OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
 OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
 OPENROUTER_SITE_URL  = os.environ.get("OPENROUTER_SITE_URL", "https://astro-bot-l9ae.onrender.com")
 OPENROUTER_APP_NAME  = os.environ.get("OPENROUTER_APP_NAME", "astro-bot")
@@ -26,12 +36,16 @@ line_bot_api = LineBotApi(LINE_ACCESS_TOKEN)
 handler      = WebhookHandler(LINE_CHANNEL_SECRET)
 app          = Flask(__name__)
 logging.basicConfig(level=logging.ERROR)
+print(
+    f"🔐 OpenRouter key source: {OPENROUTER_API_KEY_SOURCE or 'not configured'}",
+    flush=True,
+)
 
 # ── OpenRouter LLM client ─────────────────────────────────────
 
 def call_openrouter(system, user_content, max_tokens, temperature=0.2):
     if not OPENROUTER_API_KEY:
-        raise RuntimeError("OPENROUTER_API_KEY is not configured")
+        raise RuntimeError("OpenRouter API key is not configured; checked OPENROUTER_API_KEY and ANTHROPIC_API_KEY")
 
     response = requests.post(
         "https://openrouter.ai/api/v1/chat/completions",
