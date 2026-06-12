@@ -1,4 +1,4 @@
-import math, requests, json, re, logging, os, threading
+import hashlib, math, requests, json, re, logging, os, threading
 
 from datetime import datetime, timedelta, timezone, date
 from skyfield.api import Star, wgs84, load
@@ -35,6 +35,11 @@ def describe_openrouter_key():
         shape = "unexpected"
     return f"source={OPENROUTER_API_KEY_SOURCE}, length={len(OPENROUTER_API_KEY)}, shape={shape}"
 
+def fingerprint_openrouter_key():
+    if not OPENROUTER_API_KEY:
+        return "none"
+    return hashlib.sha256(OPENROUTER_API_KEY.encode("utf-8")).hexdigest()[:12]
+
 OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
 OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "anthropic/claude-sonnet-4.5")
 OPENROUTER_SITE_URL  = os.environ.get("OPENROUTER_SITE_URL", "https://astro-bot-l9ae.onrender.com")
@@ -53,6 +58,7 @@ print(
     flush=True,
 )
 print(f"🔐 OpenRouter key check: {describe_openrouter_key()}", flush=True)
+print(f"🔐 OpenRouter key fingerprint: {fingerprint_openrouter_key()}", flush=True)
 
 # ── OpenRouter LLM client ─────────────────────────────────────
 
