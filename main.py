@@ -935,6 +935,25 @@ def location_prompt_catalog():
         entries.append(f"{name}({item['lat']:.3f},{item['lon']:.3f})")
     return "，".join(entries)
 
+def google_maps_url(lat, lon):
+    return f"https://www.google.com/maps?q={lat:.6f},{lon:.6f}"
+
+def format_location_resolution(intent, original_query):
+    location_name = intent.get("location_name", "未知地點")
+    lat = coerce_float(intent.get("lat"))
+    lon = coerce_float(intent.get("lon"))
+    item = LOCATION_DATA.get(location_name, {})
+    source = item.get("source", "user_supplied_coordinates")
+    confidence = item.get("confidence", "unknown")
+    return (
+        "【地點解析】\n"
+        f"你輸入：{original_query}\n"
+        f"解析地點：{location_name}\n"
+        f"座標：{lat:.6f}, {lon:.6f}\n"
+        f"Google Maps：{google_maps_url(lat, lon)}\n"
+        f"資料來源：{source}｜信心：{confidence}"
+    )
+
 TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
 TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
 AMBIGUOUS_LOCATION_TERMS = {"飛行場", "機場", "山上", "海邊", "海岸", "湖邊"}
@@ -1074,7 +1093,8 @@ def extract_user_coordinates(text):
 def location_coordinate_prompt(location_name):
     place = location_name or "這個地點"
     return (
-        f"我目前無法穩定解析「{place}」的座標。\n\n"
+        f"我目前無法在地點資料庫中穩定解析「{place}」的座標。\n"
+        "我已主動將這個地點列入地點許願池，後續可補進資料庫。\n\n"
         "請回覆經緯度，我會接續剛剛的查詢繼續計算。\n"
         "格式範例：\n"
         "座標：23.124, 121.216\n"
@@ -1594,6 +1614,7 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
 
         result = run_query(text, prefetched_intent=intent_for_check)
         reply  = generate_reply(result)
+        reply = f"{format_location_resolution(result['intent'], text)}\n\n{reply}"
         if reply_prefix:
             reply = f"{reply_prefix}\n\n{reply}"
         user_last_query[user_id] = text
@@ -1618,26 +1639,35 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
         print("[回覆] 完成", flush=True)
 
     except LocationResolutionError as e:
+        requested_location = e.location_name or extract_location_hint(text) or text
+        wish_saved = log_wish(
+            username,
+            user_id,
+            text,
+            f"地點資料庫新增：{requested_location}（原始查詢：{text}）",
+            "地點許願（自動）",
+        )
         user_state[user_id] = "waiting_location_coordinates"
         user_pending_location_query[user_id] = {
             "text": text,
             "intent": e.intent,
-            "location_name": e.location_name,
+            "location_name": requested_location,
         }
         log_query(username, user_id, text, e.intent or {}, {
             "policy": "no_guessing_without_evidence",
             "location": {
                 "status": "missing",
-                "requested_location": e.location_name or "",
+                "requested_location": requested_location,
                 "reason": str(e),
-                "action": "asked_user_for_coordinates",
+                "action": "added_to_location_wishlist_and_asked_user_for_coordinates",
             },
         })
-        safe_push_message(user_id, TextSendMessage(
-            text=location_coordinate_prompt(e.location_name)
-        ), "location coordinate prompt")
+        prompt = location_coordinate_prompt(requested_location)
+        if not wish_saved:
+            prompt += "\n\n⚠️ 地點許願池暫時寫入失敗，但我仍會等待你補座標。"
+        safe_push_message(user_id, TextSendMessage(text=prompt), "location coordinate prompt")
         mark_message_as_read(mark_as_read_token)
-        print(f"[地點待補座標] {e.location_name or 'unknown'}: {text}", flush=True)
+        print(f"[地點待補座標] {requested_location}: {text}", flush=True)
 
     except Exception as e:
         log_unhandled_exception("process_and_reply", e)
