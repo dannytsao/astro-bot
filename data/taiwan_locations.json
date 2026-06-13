@@ -115,5 +115,1392 @@
     "source": "legacy-curated",
     "confidence": "high",
     "review_status": "approved"
+  },
+  "大武崙砲台": {
+    "lat": 25.1594,
+    "lon": 121.7081,
+    "aliases": [],
+    "region": "基隆市安樂區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "南面偏東 / 古蹟砲台堡壘與星空呼應"
+  },
+  "不厭亭": {
+    "lat": 25.0906,
+    "lon": 121.8481,
+    "aliases": [],
+    "region": "新北市瑞芳區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南方 / 經典寂寞公路延伸至銀河核心"
+  },
+  "鼻頭角步道（燈塔）": {
+    "lat": 25.1292,
+    "lon": 121.9239,
+    "aliases": [
+      "鼻頭角步道",
+      "燈塔",
+      "鼻頭角",
+      "鼻頭角燈塔"
+    ],
+    "region": "新北市瑞芳區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南至南方 / 白色燈塔與太平洋海銀河"
+  },
+  "三貂角燈塔": {
+    "lat": 25.0078,
+    "lon": 122.0014,
+    "aliases": [
+      "三貂角"
+    ],
+    "region": "新北市貢寮區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南南方 / 台灣極東點燈塔地景，需避開燈塔強光"
+  },
+  "南雅奇岩": {
+    "lat": 25.1206,
+    "lon": 121.8906,
+    "aliases": [],
+    "region": "新北市瑞芳區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南方 / 獨特海蝕風化岩石作為前景（需地景補光）"
+  },
+  "鷹石尖（已封閉，周邊觀景點）": {
+    "lat": 24.9453,
+    "lon": 121.8942,
+    "aliases": [
+      "鷹石尖",
+      "已封閉，周邊觀景點"
+    ],
+    "region": "宜蘭縣頭城鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南面 / 俯瞰蜜月灣與太平洋星空"
+  },
+  "草嶺古道（埡口涼亭）": {
+    "lat": 24.9881,
+    "lon": 121.9367,
+    "aliases": [
+      "草嶺古道",
+      "埡口涼亭"
+    ],
+    "region": "新北市貢寮區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南方 / 埡口山谷與虎字碑人文星景"
+  },
+  "淡水福容飯店旁情人橋": {
+    "lat": 25.1828,
+    "lon": 121.4111,
+    "aliases": [
+      "淡水情人橋",
+      "情人橋"
+    ],
+    "region": "新北市淡水區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 7,
+    "direction_notes": "西南方 / 城市高光害挑戰，適合冬春拍獵戶座與橋體"
+  },
+  "瑞芳茶壺山步道": {
+    "lat": 25.1094,
+    "lon": 121.8625,
+    "aliases": [
+      "茶壺山",
+      "茶壺山步道"
+    ],
+    "region": "新北市瑞芳區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南方 / 涼亭與奇特岩峰，俯瞰陰陽海夜景與星空"
+  },
+  "平溪十分國小（開闊處）": {
+    "lat": 25.0428,
+    "lon": 121.7764,
+    "aliases": [
+      "平溪十分國小",
+      "開闊處",
+      "十分國小"
+    ],
+    "region": "新北市平溪區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "天頂 / 適合 SeeStar 進行深空天體窄頻拍攝"
+  },
+  "拉拉山神木區入口": {
+    "lat": 24.7042,
+    "lon": 121.4383,
+    "aliases": [
+      "拉拉山神木區",
+      "拉拉山"
+    ],
+    "region": "桃園市復興區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 高海拔巨木剪影與璀璨銀河"
+  },
+  "巴陵舊橋": {
+    "lat": 24.6811,
+    "lon": 121.3986,
+    "aliases": [],
+    "region": "桃園市復興區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 紅色拱橋與大漢溪谷星空"
+  },
+  "東眼山國家森林遊樂區": {
+    "lat": 24.8272,
+    "lon": 121.4117,
+    "aliases": [],
+    "region": "桃園市復興區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南南方 / 林道柳杉木頂部星空（赤道儀追星點）"
+  },
+  "雪霧鬧部落（高海拔農場）": {
+    "lat": 24.7264,
+    "lon": 121.3789,
+    "aliases": [
+      "雪霧鬧部落",
+      "高海拔農場"
+    ],
+    "region": "桃園市復興區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 梯田地景，北面靠山阻擋桃園光害"
+  },
+  "觀音草漯沙丘": {
+    "lat": 25.0617,
+    "lon": 121.1322,
+    "aliases": [],
+    "region": "桃園市觀音區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南面 / 巨大風力發電風車與沙丘荒涼感"
+  },
+  "新竹宇老觀景台": {
+    "lat": 24.6625,
+    "lon": 121.2844,
+    "aliases": [
+      "宇老觀景台",
+      "宇老"
+    ],
+    "region": "新竹縣尖石鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 俯瞰那羅部落燈火與遠方山脈銀河"
+  },
+  "新竹司馬庫斯巨木群": {
+    "lat": 24.5794,
+    "lon": 121.3411,
+    "aliases": [
+      "司馬庫斯巨木群",
+      "司馬庫斯"
+    ],
+    "region": "新竹縣尖石鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "天頂及南方 / 極低光害，上帝的部落最純淨星空"
+  },
+  "新竹鎮西堡教堂": {
+    "lat": 24.5714,
+    "lon": 121.3283,
+    "aliases": [
+      "鎮西堡教堂",
+      "鎮西堡"
+    ],
+    "region": "新竹縣尖石鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 獨特泰雅族石砌教堂地景（強烈推薦）"
+  },
+  "海之聲（殘橋）": {
+    "lat": 24.7578,
+    "lon": 120.8975,
+    "aliases": [
+      "海之聲",
+      "殘橋",
+      "海之聲殘橋"
+    ],
+    "region": "新竹市香山區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南方 / 延伸入海的荒廢水泥橋，拍攝西沉銀河"
+  },
+  "太平山見晴古道": {
+    "lat": 24.4983,
+    "lon": 121.5367,
+    "aliases": [],
+    "region": "宜蘭縣大同鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南至南方 / 舊鐵軌、青苔與迷霧銀河（常有雲海）"
+  },
+  "翠峰湖景觀平台": {
+    "lat": 24.5122,
+    "lon": 121.6086,
+    "aliases": [],
+    "region": "宜蘭縣大同鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 台灣最大高山湖泊，拍出絕美星空倒影"
+  },
+  "粉鳥林漁港（愛情鎖海灘）": {
+    "lat": 24.4931,
+    "lon": 121.8436,
+    "aliases": [
+      "粉鳥林漁港",
+      "愛情鎖海灘",
+      "粉鳥林"
+    ],
+    "region": "宜蘭縣蘇澳鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 矗立於海面上的奇特礁岩地景"
+  },
+  "南方澳觀景台": {
+    "lat": 24.5739,
+    "lon": 121.8661,
+    "aliases": [],
+    "region": "宜蘭縣蘇澳鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南方 / 俯瞰南方澳漁港與太平洋日出前的銀河"
+  },
+  "明池國家森林遊樂區": {
+    "lat": 24.6514,
+    "lon": 121.4719,
+    "aliases": [],
+    "region": "宜蘭縣大同鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "天頂 / 湖中枯木與落羽松，北橫明珠星景"
+  },
+  "大里驛青年旅館旁海灘": {
+    "lat": 24.9664,
+    "lon": 121.9242,
+    "aliases": [
+      "大里海灘",
+      "大里驛",
+      "大里車站海灘"
+    ],
+    "region": "宜蘭縣頭城鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南方 / 以遠方龜山島為地景，銀河從島上方升起"
+  },
+  "後龍好望角": {
+    "lat": 24.6017,
+    "lon": 120.7303,
+    "aliases": [],
+    "region": "苗栗縣後龍鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南面 / 巨大風車與海線鐵道星軌"
+  },
+  "雪霸國家公園觀霧遊憩區": {
+    "lat": 24.5053,
+    "lon": 121.1167,
+    "aliases": [
+      "觀霧",
+      "觀霧遊憩區"
+    ],
+    "region": "苗栗縣泰安鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 聖稜線剪影與極致高山星空"
+  },
+  "勝興車站 / 龍騰斷橋": {
+    "lat": 24.3583,
+    "lon": 120.7742,
+    "aliases": [
+      "勝興車站",
+      "龍騰斷橋"
+    ],
+    "region": "苗栗縣三義鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南南方 / 磚紅斷橋歷史感（需微弱地景補光）"
+  },
+  "向天湖": {
+    "lat": 24.5842,
+    "lon": 121.0336,
+    "aliases": [],
+    "region": "苗栗縣南庄鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 湖畔矮靈祭場與柳杉林倒影"
+  },
+  "加里山登山步道（避難山屋）": {
+    "lat": 24.5372,
+    "lon": 121.0028,
+    "aliases": [
+      "加里山登山步道",
+      "避難山屋",
+      "加里山"
+    ],
+    "region": "苗栗縣南庄鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "天頂 / 杉木林間的純淨星空"
+  },
+  "高美濕地（木棧道末端）": {
+    "lat": 24.3117,
+    "lon": 120.5489,
+    "aliases": [
+      "高美濕地",
+      "木棧道末端",
+      "高美濕地木棧道"
+    ],
+    "region": "台中市清水區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南面 / 濕地倒影與風車（受台中港光害影響）"
+  },
+  "大坑步道（五號步道涼亭）": {
+    "lat": 24.1894,
+    "lon": 120.7933,
+    "aliases": [
+      "大坑步道",
+      "五號步道涼亭",
+      "大坑五號步道",
+      "大坑5號步道"
+    ],
+    "region": "台中市北屯區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "東南方 / 圓木棧道延伸感與都市邊緣星空"
+  },
+  "武陵農場（露營區大草原）": {
+    "lat": 24.3644,
+    "lon": 121.3128,
+    "aliases": [
+      "武陵農場",
+      "露營區大草原",
+      "武陵露營區",
+      "武陵農場露營區"
+    ],
+    "region": "台中市和平區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 歐式小木屋與落羽松星景（追星熱點）"
+  },
+  "福壽山農場（千櫻園）": {
+    "lat": 24.2492,
+    "lon": 121.2464,
+    "aliases": [
+      "福壽山農場",
+      "千櫻園"
+    ],
+    "region": "台中市和平區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 枯木、波斯菊或櫻花季限定星景"
+  },
+  "梨山賓館前廣場": {
+    "lat": 24.2567,
+    "lon": 121.2514,
+    "aliases": [
+      "梨山賓館",
+      "梨山"
+    ],
+    "region": "台中市和平區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "北面至東面 / 宮殿式建築與星軌拍攝"
+  },
+  "鳶峰星空劇場（暗空公園）": {
+    "lat": 24.1169,
+    "lon": 121.2181,
+    "aliases": [
+      "鳶峰星空劇場",
+      "暗空公園",
+      "鳶峰",
+      "鳶峰暗空公園"
+    ],
+    "region": "南投縣仁愛鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南面 / 設有觀星平台，硬體完善的追星起點"
+  },
+  "昆陽停車場（太魯閣碑）": {
+    "lat": 24.1228,
+    "lon": 121.2664,
+    "aliases": [
+      "昆陽停車場",
+      "太魯閣碑",
+      "昆陽"
+    ],
+    "region": "南投縣仁愛鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南南方 / 經典S彎道車軌與銀河（車燈干擾極多）"
+  },
+  "武嶺牌樓": {
+    "lat": 24.1372,
+    "lon": 121.2758,
+    "aliases": [
+      "武嶺",
+      "武嶺停車場"
+    ],
+    "region": "南投縣仁愛鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南面 / 全台公路最高點牌樓，銀河經典地標"
+  },
+  "石門山步道（克難關側）": {
+    "lat": 24.1438,
+    "lon": 121.2839,
+    "aliases": [
+      "石門山步道",
+      "克難關側",
+      "石門山",
+      "克難關"
+    ],
+    "region": "花蓮縣秀林鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南南方 / 中央尖山山稜線，避開武嶺車燈的最佳點"
+  },
+  "合歡山主峰步道（第一瞭望台）": {
+    "lat": 24.1344,
+    "lon": 121.2694,
+    "aliases": [
+      "合歡山主峰步道",
+      "第一瞭望台",
+      "合歡山主峰"
+    ],
+    "region": "南投縣仁愛鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 碉堡與馬雅平台，拍垂直夏銀河首選"
+  },
+  "合歡尖山（岩壁側）": {
+    "lat": 24.1428,
+    "lon": 121.2817,
+    "aliases": [
+      "合歡尖山",
+      "岩壁側"
+    ],
+    "region": "南投縣仁愛鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 尖銳冰斗地形，具強烈視覺張力"
+  },
+  "小風口（合歡山管理站）": {
+    "lat": 24.1611,
+    "lon": 121.2875,
+    "aliases": [
+      "小風口",
+      "合歡山管理站"
+    ],
+    "region": "花蓮縣秀林鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "天頂及北面 / 適合 SeeStar 擺放，有無障礙平台且風較小"
+  },
+  "塔塔加（夫妻樹遺址）": {
+    "lat": 23.4853,
+    "lon": 120.8839,
+    "aliases": [
+      "塔塔加",
+      "夫妻樹遺址",
+      "塔塔加夫妻樹",
+      "夫妻樹"
+    ],
+    "region": "南投縣信義鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 雖然斷了一棵，但殘存巨木仍是春銀河經典"
+  },
+  "塔塔加遊客中心（停車場）": {
+    "lat": 23.4828,
+    "lon": 120.8894,
+    "aliases": [
+      "塔塔加遊客中心",
+      "停車場",
+      "塔塔加停車場"
+    ],
+    "region": "南投縣信義鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南南方 / 阿里山山脈背側，拍玉山主峰星景起點"
+  },
+  "日月潭出水口（向山段）": {
+    "lat": 23.8519,
+    "lon": 120.9014,
+    "aliases": [
+      "日月潭出水口",
+      "向山段",
+      "向山出水口"
+    ],
+    "region": "南投縣魚池鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南面 / 湖面無波時可拍到銀河與蔣公碼頭倒影"
+  },
+  "朝霧碼頭": {
+    "lat": 23.8711,
+    "lon": 120.9164,
+    "aliases": [],
+    "region": "南投縣魚池鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "北至東面 / 拍攝星軌與晨曦前銀河"
+  },
+  "王功漁港（芳苑燈塔）": {
+    "lat": 23.9681,
+    "lon": 120.3253,
+    "aliases": [
+      "王功漁港",
+      "芳苑燈塔"
+    ],
+    "region": "彰化縣芳苑鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南面 / 黑白相間條紋燈塔與王功橋地景"
+  },
+  "彰化八卦山（微熱山丘周邊）": {
+    "lat": 23.9056,
+    "lon": 120.6433,
+    "aliases": [
+      "彰化八卦山",
+      "微熱山丘周邊",
+      "八卦山",
+      "微熱山丘"
+    ],
+    "region": "彰化縣南投市交界",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "東南面 / 鳳梨田與八卦山台地微光星空"
+  },
+  "雲林草嶺萬年峽谷": {
+    "lat": 23.6014,
+    "lon": 120.6694,
+    "aliases": [
+      "草嶺萬年峽谷",
+      "萬年峽谷"
+    ],
+    "region": "雲林縣古坑鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南方 / 溪谷化石紋理與深山星空（注意夜間落石）"
+  },
+  "古坑樟湖生態中小學": {
+    "lat": 23.6128,
+    "lon": 120.6322,
+    "aliases": [],
+    "region": "雲林縣古坑鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南面 / 獨特茶園景致與S形木棧道星景"
+  },
+  "阿里山小笠原山景觀平台": {
+    "lat": 23.5075,
+    "lon": 120.8225,
+    "aliases": [
+      "小笠原山景觀平台",
+      "小笠原觀景台",
+      "阿里山小笠原"
+    ],
+    "region": "嘉義縣阿里山鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "360度開闊 / 3,000米木棧平台，拍祝山日出前銀河"
+  },
+  "阿里山祝山車站": {
+    "lat": 23.5114,
+    "lon": 120.8194,
+    "aliases": [
+      "祝山車站",
+      "祝山"
+    ],
+    "region": "嘉義縣阿里山鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 新修築的弧形車站木結構與星空"
+  },
+  "阿里山沼平車站（舊火車頭）": {
+    "lat": 23.5167,
+    "lon": 120.8064,
+    "aliases": [
+      "阿里山沼平車站",
+      "舊火車頭",
+      "沼平車站"
+    ],
+    "region": "嘉義縣阿里山鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 櫻花季時櫻花、鐵道與星空三位一體"
+  },
+  "梅山碧湖山觀光茶園": {
+    "lat": 23.5614,
+    "lon": 120.6139,
+    "aliases": [
+      "碧湖山觀光茶園",
+      "碧湖山"
+    ],
+    "region": "嘉義縣梅山鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南面 / 階梯式茶園與瑞里山脈日出前銀河"
+  },
+  "台南七股國聖燈塔": {
+    "lat": 23.1008,
+    "lon": 120.0361,
+    "aliases": [
+      "七股國聖燈塔",
+      "國聖燈塔",
+      "七股燈塔"
+    ],
+    "region": "台南市七股區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "西南面 / 台灣極西點鐵塔，沙丘地形有大漠星空感"
+  },
+  "台南二寮觀日亭": {
+    "lat": 22.9914,
+    "lon": 120.4111,
+    "aliases": [
+      "二寮觀日亭",
+      "二寮"
+    ],
+    "region": "台南市左鎮區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "東南方 / 白堊紀惡地與竹林，若有低空雲海極壯觀"
+  },
+  "烏山頭水庫（西拉雅度假村旁）": {
+    "lat": 23.2056,
+    "lon": 120.3739,
+    "aliases": [
+      "烏山頭水庫",
+      "西拉雅度假村旁",
+      "西拉雅度假村"
+    ],
+    "region": "台南市官田區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "天頂 / 適合智能天文台（DWARF2）做深空星雲觀測"
+  },
+  "南化水庫（觀景台）": {
+    "lat": 23.0842,
+    "lon": 120.5367,
+    "aliases": [
+      "南化水庫",
+      "觀景台",
+      "南化水庫觀景台"
+    ],
+    "region": "台南市南化區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東南方 / 水庫大壩與平靜水面映射星光"
+  },
+  "高雄中之關步道（南橫）": {
+    "lat": 23.2694,
+    "lon": 120.8911,
+    "aliases": [
+      "高雄中之關步道",
+      "南橫",
+      "中之關步道",
+      "中之關"
+    ],
+    "region": "高雄市桃源區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 南橫復通後的高海拔極低光害秘境"
+  },
+  "高雄田寮月世界": {
+    "lat": 22.8844,
+    "lon": 120.3894,
+    "aliases": [
+      "田寮月世界",
+      "月世界"
+    ],
+    "region": "高雄市田寮區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "南南方 / 惡地山脊如月球表面，極具科幻感的星景"
+  },
+  "高雄大樹舊鐵橋": {
+    "lat": 22.6606,
+    "lon": 120.4319,
+    "aliases": [
+      "大樹舊鐵橋",
+      "舊鐵橋"
+    ],
+    "region": "高雄市大樹區",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 6,
+    "direction_notes": "東南面 / 百年高屏溪舊鐵橋（高光害，考驗地景控光）"
+  },
+  "屏東霧台谷川大橋（橋頭）": {
+    "lat": 22.7533,
+    "lon": 120.7094,
+    "aliases": [
+      "屏東霧台谷川大橋",
+      "橋頭",
+      "霧台谷川大橋",
+      "谷川大橋"
+    ],
+    "region": "屏東縣霧台鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 全台最高橋柱與隘寮北溪谷星空"
+  },
+  "墾丁龍磐大草原": {
+    "lat": 21.9308,
+    "lon": 120.8442,
+    "aliases": [
+      "龍磐大草原",
+      "龍磐",
+      "龍磐公園"
+    ],
+    "region": "屏東縣恆春鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南至東南 / 毫無遮蔽的太平洋海銀河，南十字星聖地"
+  },
+  "墾丁貓鼻頭公園": {
+    "lat": 21.9222,
+    "lon": 120.7411,
+    "aliases": [
+      "貓鼻頭公園",
+      "貓鼻頭"
+    ],
+    "region": "屏東縣恆春鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南西方 / 裙礁海岸與西沉銀河，地形立體"
+  },
+  "鵝鑾鼻燈塔": {
+    "lat": 21.9022,
+    "lon": 120.8528,
+    "aliases": [],
+    "region": "屏東縣恆春鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "南南方 / 台灣最南端白色巨塔，須注意旋轉燈光干擾"
+  },
+  "墾丁H會館旁海灘（枋山段）": {
+    "lat": 22.2139,
+    "lon": 120.6558,
+    "aliases": [
+      "墾丁H會館旁海灘",
+      "枋山段",
+      "H會館旁海灘",
+      "枋山段海灘"
+    ],
+    "region": "屏東縣枋山鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "西南面 / 台灣海峽巨石海岸，適合拍夏夜落銀河"
+  },
+  "佳樂水風景區（山海瀑布）": {
+    "lat": 21.9961,
+    "lon": 120.8622,
+    "aliases": [
+      "佳樂水風景區",
+      "山海瀑布",
+      "佳樂水"
+    ],
+    "region": "屏東縣滿州鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 蜂巢岩、蕈狀岩等奇岩怪石星空"
+  },
+  "旭海大草原": {
+    "lat": 22.1894,
+    "lon": 120.8878,
+    "aliases": [],
+    "region": "屏東縣滿州鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南面 / 牡丹鄉極低光害區，灌木叢與太平洋星空"
+  },
+  "牡丹水庫（溢洪道前）": {
+    "lat": 22.1228,
+    "lon": 120.7817,
+    "aliases": [
+      "牡丹水庫",
+      "溢洪道前",
+      "牡丹水庫溢洪道"
+    ],
+    "region": "屏東縣牡丹鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 宏偉的大壩洩洪道與深山星斗"
+  },
+  "滿州港口吊橋": {
+    "lat": 21.9903,
+    "lon": 120.8436,
+    "aliases": [],
+    "region": "屏東縣滿州鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南面 / 溪流出海口與吊橋線條相互輝映"
+  },
+  "萬金聖母聖殿": {
+    "lat": 22.5956,
+    "lon": 120.6117,
+    "aliases": [],
+    "region": "屏東縣萬巒鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "天頂 / 西班牙碉堡式老教堂，星軌與深空拍攝"
+  },
+  "墾丁白沙灣": {
+    "lat": 21.935,
+    "lon": 120.7175,
+    "aliases": [
+      "白沙灣"
+    ],
+    "region": "屏東縣恆春鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "西南面 / 潔白沙灘與海浪，適合拍攝春季獵戶座西沉"
+  },
+  "大鵬灣跨海大橋（側邊）": {
+    "lat": 22.4542,
+    "lon": 120.4489,
+    "aliases": [
+      "大鵬灣跨海大橋",
+      "側邊",
+      "大鵬灣"
+    ],
+    "region": "屏東縣東港鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "南南方 / 帆船造型大橋，利用局部點燈拍現代星景"
+  },
+  "枋寮漁港（藍色天橋）": {
+    "lat": 22.3664,
+    "lon": 120.5878,
+    "aliases": [
+      "枋寮漁港",
+      "藍色天橋"
+    ],
+    "region": "屏東縣枋寮鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 5,
+    "direction_notes": "西南面 / 港區天橋地景與海面星空"
+  },
+  "屏東風吹砂": {
+    "lat": 21.9442,
+    "lon": 120.8494,
+    "aliases": [
+      "風吹砂"
+    ],
+    "region": "屏東縣恆春鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 崖壁與沙河地形，風勢強勁需加固腳架"
+  },
+  "七星潭風景區（北端）": {
+    "lat": 24.0353,
+    "lon": 121.6311,
+    "aliases": [
+      "七星潭風景區",
+      "北端",
+      "七星潭"
+    ],
+    "region": "花蓮縣新城鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "東面至東南 / 月牙灣礫石灘，需避開花蓮機場光害"
+  },
+  "石梯坪風景區": {
+    "lat": 23.4889,
+    "lon": 121.5117,
+    "aliases": [],
+    "region": "花蓮縣豐濱鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 白色單面山世界級地質景觀，地景張力極強"
+  },
+  "六十石山（忘憂亭）": {
+    "lat": 23.2208,
+    "lon": 121.3214,
+    "aliases": [
+      "六十石山",
+      "忘憂亭"
+    ],
+    "region": "花蓮縣富里鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南至西南 / 8-9月金針花季，花海、涼亭與銀河共舞"
+  },
+  "赤科山（三巨石）": {
+    "lat": 23.3917,
+    "lon": 121.3883,
+    "aliases": [
+      "赤科山",
+      "三巨石"
+    ],
+    "region": "花蓮縣玉里鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 巨大黑色火成岩矗立於金針花丘陵間"
+  },
+  "秀姑巒溪大橋（舊鐵道）": {
+    "lat": 23.3344,
+    "lon": 121.3156,
+    "aliases": [
+      "秀姑巒溪大橋",
+      "舊鐵道",
+      "秀姑巒溪舊鐵道"
+    ],
+    "region": "花蓮縣玉里鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 歐亞與菲律賓海板塊交界紀念碑旁舊鐵道"
+  },
+  "三仙台跨海步橋": {
+    "lat": 23.1233,
+    "lon": 121.4114,
+    "aliases": [
+      "三仙台",
+      "三仙台步橋",
+      "三仙台跨海橋"
+    ],
+    "region": "台東縣成功鎮",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 八拱波浪跨海大橋，全台最經典銀河前景"
+  },
+  "加路蘭遊憩區": {
+    "lat": 22.8058,
+    "lon": 121.1969,
+    "aliases": [],
+    "region": "台東縣台東市",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南面 / 漂流木裝置藝術與太平洋銀河（極易到達）"
+  },
+  "小野柳（富山護漁區）": {
+    "lat": 22.795,
+    "lon": 121.1944,
+    "aliases": [
+      "小野柳",
+      "富山護漁區"
+    ],
+    "region": "台東縣台東市",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南方 / 豆腐岩與砂岩奇特紋理地景"
+  },
+  "金剛大道（長濱）": {
+    "lat": 23.3158,
+    "lon": 121.4514,
+    "aliases": [
+      "金剛大道",
+      "長濱",
+      "長濱金剛大道"
+    ],
+    "region": "台東縣長濱鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南面 / 筆直大道直通太平洋，無電線桿純淨星空"
+  },
+  "太麻里金針山（千禧亭）": {
+    "lat": 22.6511,
+    "lon": 121.0114,
+    "aliases": [
+      "太麻里金針山",
+      "千禧亭",
+      "金針山"
+    ],
+    "region": "台東縣太麻里鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南南方 / 俯瞰太平洋海岸線與高山台地星空"
+  },
+  "多良車站（上方觀景台）": {
+    "lat": 22.5072,
+    "lon": 120.9617,
+    "aliases": [
+      "多良車站",
+      "上方觀景台",
+      "多良觀景台"
+    ],
+    "region": "台東縣太麻里鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東南面 / 紅色鐵欄杆、太平洋與全台最美車站星軌"
+  },
+  "大武濱海公園": {
+    "lat": 22.3394,
+    "lon": 120.8944,
+    "aliases": [],
+    "region": "台東縣大武鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 南迴公路上極低光害的開闊海岸沙灘"
+  },
+  "台東鹿野高台（起飛場）": {
+    "lat": 22.9156,
+    "lon": 121.1189,
+    "aliases": [
+      "台東鹿野高台",
+      "起飛場",
+      "鹿野高台",
+      "鹿野起飛場"
+    ],
+    "region": "台東縣鹿野鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 寬闊草皮，極度適合擺放 SeeStar 自動觀星"
+  },
+  "嘉明湖（天使的眼淚）": {
+    "lat": 23.2514,
+    "lon": 121.0319,
+    "aliases": [
+      "嘉明湖",
+      "天使的眼淚"
+    ],
+    "region": "台東縣海端鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 1,
+    "direction_notes": "360度全景 / 台灣頂級高山隕石湖倒影，璀璨銀河核心"
+  },
+  "瓦拉米步道（山風吊橋）": {
+    "lat": 23.3314,
+    "lon": 121.2114,
+    "aliases": [
+      "瓦拉米步道",
+      "山風吊橋"
+    ],
+    "region": "花蓮縣卓溪鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 深山峽谷中的綠色吊橋與一線天星空"
+  },
+  "澎湖七美龍埕海蝕平台": {
+    "lat": 23.2017,
+    "lon": 119.4361,
+    "aliases": [
+      "七美龍埕海蝕平台",
+      "七美龍埕",
+      "龍埕海蝕平台",
+      "龍埕"
+    ],
+    "region": "澎湖縣七美鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "東南方 / 褶皺玄武岩如巨龍盤據，搭配海上銀河"
+  },
+  "澎湖西嶼燈塔（漁翁島）": {
+    "lat": 23.6353,
+    "lon": 119.4681,
+    "aliases": [
+      "澎湖西嶼燈塔",
+      "漁翁島",
+      "西嶼燈塔",
+      "漁翁島燈塔"
+    ],
+    "region": "澎湖縣西嶼鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "西南面 / 台灣最古老西式燈塔與玄武岩懸崖"
+  },
+  "澎湖奎壁山（摩西分海）": {
+    "lat": 23.5967,
+    "lon": 119.6711,
+    "aliases": [
+      "澎湖奎壁山",
+      "摩西分海",
+      "奎壁山"
+    ],
+    "region": "澎湖縣湖西鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "東北至東南 / 礫石步道延伸至赤嶼（需配合潮汐）"
+  },
+  "綠島牛頭山草原": {
+    "lat": 22.6739,
+    "lon": 121.5036,
+    "aliases": [
+      "牛頭山草原",
+      "牛頭山"
+    ],
+    "region": "台東縣綠島鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "360度開闊 / 巨大草坪與牛頭造型岩石，地景空曠"
+  },
+  "綠島帆船鼻大草原": {
+    "lat": 22.6464,
+    "lon": 121.5014,
+    "aliases": [
+      "帆船鼻",
+      "帆船鼻大草原"
+    ],
+    "region": "台東縣綠島鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 2,
+    "direction_notes": "南方 / 位於綠島溫泉旁，拍攝垂直夏銀河極佳"
+  },
+  "蘭嶼青青草原": {
+    "lat": 22.0164,
+    "lon": 121.5433,
+    "aliases": [],
+    "region": "台東縣蘭嶼鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 1,
+    "direction_notes": "南南方 / 全台最純淨星空之一，拍銀河核心沉入海面"
+  },
+  "蘭嶼東清灣（拼板舟）": {
+    "lat": 22.0567,
+    "lon": 121.5714,
+    "aliases": [
+      "蘭嶼東清灣",
+      "拼板舟",
+      "東清灣"
+    ],
+    "region": "台東縣蘭嶼鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 1,
+    "direction_notes": "東面 / 傳統達悟族拼板舟停泊在灘頭，極具人文美感"
+  },
+  "蘭嶼氣象站": {
+    "lat": 22.0369,
+    "lon": 121.5544,
+    "aliases": [],
+    "region": "台東縣蘭嶼鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 1,
+    "direction_notes": "360度開闊 / 日治時期白石建築古蹟，居高臨下"
+  },
+  "馬祖東莒燈塔（東犬燈塔）": {
+    "lat": 25.9733,
+    "lon": 119.9858,
+    "aliases": [
+      "馬祖東莒燈塔",
+      "東犬燈塔",
+      "東莒燈塔",
+      "東莒島燈塔"
+    ],
+    "region": "連江縣莒光鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 3,
+    "direction_notes": "南方 / 百年英式花崗岩燈塔，春夏季可捕捉「銀河與藍眼淚」共存"
+  },
+  "馬祖北竿芹壁聚落（上方）": {
+    "lat": 26.2236,
+    "lon": 119.9814,
+    "aliases": [
+      "馬祖北竿芹壁聚落",
+      "上方",
+      "北竿芹壁聚落",
+      "北竿芹壁",
+      "芹壁聚落",
+      "芹壁"
+    ],
+    "region": "連江縣北竿鄉",
+    "source": "user_provided_2026-06-13",
+    "confidence": "medium",
+    "review_status": "approved",
+    "bortle": 4,
+    "direction_notes": "北至東面 / 閩東石頭古厝依山傍海，拍攝古村落星軌"
   }
 }
