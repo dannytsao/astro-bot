@@ -379,6 +379,10 @@ def is_direct_wish_text(text):
     keywords = ("希望支援", "希望加入", "建議加入", "建議新增", "想新增", "想支援", "功能建議")
     return any(normalized.startswith(prefix) for prefix in prefixes) or any(keyword in normalized for keyword in keywords)
 
+def is_likely_new_query(text):
+    query_keywords = ("適合", "可以", "能不能", "可不可以", "銀河", "星", "拍", "今晚", "明天", "後天", "週末")
+    return bool(find_known_location_in_query(text)) or any(keyword in text for keyword in query_keywords)
+
 def extract_mark_as_read_token(event):
     token = getattr(event.message, "mark_as_read_token", "") or getattr(event.message, "markAsReadToken", "")
     if token:
@@ -1692,7 +1696,11 @@ def handle_message(event):
             ), "invalid coordinate reply")
             mark_message_as_read(mark_as_read_token)
             return
-        if not coordinates:
+        if not coordinates and is_likely_new_query(text):
+            user_state.pop(user_id, None)
+            user_pending_location_query.pop(user_id, None)
+            print(f"[地點補座標] 收到新查詢，取消上一筆 pending：{text}", flush=True)
+        elif not coordinates:
             safe_reply_message(event.reply_token, TextSendMessage(
                 text=(
                     "我還是讀不到經緯度。\n\n"
@@ -1704,40 +1712,43 @@ def handle_message(event):
             ), "missing coordinate reply")
             mark_message_as_read(mark_as_read_token)
             return
-        if not pending:
+
+        if not coordinates:
+            pass
+        elif not pending:
             user_state.pop(user_id, None)
             safe_reply_message(event.reply_token, TextSendMessage(
                 text="找不到上一筆待補座標查詢，請重新輸入完整問題。"
             ), "missing pending location query")
             mark_message_as_read(mark_as_read_token)
             return
+        elif coordinates:
+            lat, lon = coordinates
+            intent = dict(pending.get("intent") or {})
+            intent["lat"] = lat
+            intent["lon"] = lon
+            intent["location_name"] = pending.get("location_name") or intent.get("location_name") or "自訂座標"
+            user_state.pop(user_id, None)
+            user_pending_location_query.pop(user_id, None)
 
-        lat, lon = coordinates
-        intent = dict(pending.get("intent") or {})
-        intent["lat"] = lat
-        intent["lon"] = lon
-        intent["location_name"] = pending.get("location_name") or intent.get("location_name") or "自訂座標"
-        user_state.pop(user_id, None)
-        user_pending_location_query.pop(user_id, None)
-
-        warning = ""
-        if not is_in_taiwan_loose_range(lat, lon):
-            warning = "⚠️ 這組座標看起來不在台灣常用範圍內，我仍可計算，但請確認座標是否正確。"
-        safe_reply_message(event.reply_token, TextSendMessage(
-            text=(
-                f"收到座標：{lat:.6f}, {lon:.6f}\n"
-                + (f"{warning}\n" if warning else "")
-                + "🔭 我會接續剛剛的查詢開始計算。"
+            warning = ""
+            if not is_in_taiwan_loose_range(lat, lon):
+                warning = "⚠️ 這組座標看起來不在台灣常用範圍內，我仍可計算，但請確認座標是否正確。"
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text=(
+                    f"收到座標：{lat:.6f}, {lon:.6f}\n"
+                    + (f"{warning}\n" if warning else "")
+                    + "🔭 我會接續剛剛的查詢開始計算。"
+                )
+            ), "coordinate accepted reply")
+            mark_message_as_read(mark_as_read_token)
+            thread = threading.Thread(
+                target=process_and_reply,
+                args=(user_id, pending["text"], mark_as_read_token, intent, warning),
+                daemon=True,
             )
-        ), "coordinate accepted reply")
-        mark_message_as_read(mark_as_read_token)
-        thread = threading.Thread(
-            target=process_and_reply,
-            args=(user_id, pending["text"], mark_as_read_token, intent, warning),
-            daemon=True,
-        )
-        thread.start()
-        return
+            thread.start()
+            return
 
     # 許願等待狀態
     if user_state.get(user_id) == "waiting_wish":

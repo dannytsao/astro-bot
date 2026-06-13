@@ -8,6 +8,7 @@
 - 地點解析支援 JSON aliases，未來擴充地點不需修改 Python code。
 - 建立本機 Codex skill `taiwan-location-research`，用於搜尋台灣本島與離島地點候選座標、記錄來源與產出待審 JSON。
 - 新增地點 JSON validator，檢查座標範圍、必填欄位、confidence 與 review status。
+- 修正等待補座標狀態卡住的問題：若使用者改輸入新的正常查詢，Bot 會取消上一筆 pending 並處理新查詢。
 
 ## 2026-06-12
 
