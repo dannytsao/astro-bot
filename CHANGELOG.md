@@ -1,5 +1,14 @@
 # CHANGELOG
 
+## 2026-06-13
+
+### 改進
+
+- 將 production 地點資料從 `main.py` 常數移到 `data/taiwan_locations.json`，只載入 `review_status: "approved"` 的地點。
+- 地點解析支援 JSON aliases，未來擴充地點不需修改 Python code。
+- 建立本機 Codex skill `taiwan-location-research`，用於搜尋台灣本島與離島地點候選座標、記錄來源與產出待審 JSON。
+- 新增地點 JSON validator，檢查座標範圍、必填欄位、confidence 與 review status。
+
 ## 2026-06-12
 
 ### Production 修復

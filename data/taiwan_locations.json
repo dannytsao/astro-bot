@@ -1,0 +1,119 @@
+{
+  "日月潭": {
+    "lat": 23.865,
+    "lon": 120.917,
+    "aliases": [],
+    "region": "南投",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "合歡山": {
+    "lat": 24.167,
+    "lon": 121.283,
+    "aliases": [],
+    "region": "南投/花蓮",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "外澳": {
+    "lat": 24.87,
+    "lon": 121.862,
+    "aliases": [],
+    "region": "宜蘭",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "墾丁": {
+    "lat": 21.945,
+    "lon": 120.803,
+    "aliases": [],
+    "region": "屏東",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "阿里山": {
+    "lat": 23.517,
+    "lon": 120.8,
+    "aliases": [],
+    "region": "嘉義",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "嘉明湖": {
+    "lat": 23.25,
+    "lon": 121.0,
+    "aliases": [],
+    "region": "台東",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "武陵農場": {
+    "lat": 24.367,
+    "lon": 121.367,
+    "aliases": [],
+    "region": "台中",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "太平山": {
+    "lat": 24.517,
+    "lon": 121.617,
+    "aliases": [],
+    "region": "宜蘭",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "七星山": {
+    "lat": 25.167,
+    "lon": 121.533,
+    "aliases": [],
+    "region": "台北",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "清境農場": {
+    "lat": 24.083,
+    "lon": 121.167,
+    "aliases": [],
+    "region": "南投",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "奧萬大": {
+    "lat": 23.85,
+    "lon": 121.083,
+    "aliases": [],
+    "region": "南投",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "桃源谷": {
+    "lat": 25.1,
+    "lon": 121.867,
+    "aliases": [],
+    "region": "新北/宜蘭",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  },
+  "池上": {
+    "lat": 23.124,
+    "lon": 121.216,
+    "aliases": [],
+    "region": "台東",
+    "source": "legacy-curated",
+    "confidence": "high",
+    "review_status": "approved"
+  }
+}

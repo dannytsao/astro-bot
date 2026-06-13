@@ -1,6 +1,7 @@
 import hashlib, http.client, math, requests, json, re, logging, os, threading, traceback
 
 from datetime import datetime, timedelta, timezone, date
+from pathlib import Path
 from skyfield.api import Star, wgs84, load
 from skyfield import almanac
 from flask import Flask, request, abort, jsonify
@@ -846,7 +847,7 @@ def get_7timer_seeing(lat, lon, query_dates):
     return daily
 
 
-KNOWN_LOCATIONS = {
+DEFAULT_KNOWN_LOCATIONS = {
     "日月潭": (23.865, 120.917),
     "合歡山": (24.167, 121.283),
     "外澳": (24.870, 121.862),
@@ -862,15 +863,7 @@ KNOWN_LOCATIONS = {
     "池上": (23.124, 121.216),
 }
 
-TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
-TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
-AMBIGUOUS_LOCATION_TERMS = {"飛行場", "機場", "山上", "海邊", "海岸", "湖邊"}
-
-class LocationResolutionError(RuntimeError):
-    def __init__(self, location_name, intent, message):
-        super().__init__(message)
-        self.location_name = location_name
-        self.intent = intent
+LOCATION_DATA_PATH = Path(__file__).resolve().parent / "data" / "taiwan_locations.json"
 
 def coerce_float(value):
     if isinstance(value, (int, float)):
@@ -880,6 +873,73 @@ def coerce_float(value):
         if cleaned:
             return float(cleaned)
     raise ValueError(f"not a number: {value!r}")
+
+def load_location_data():
+    try:
+        with LOCATION_DATA_PATH.open("r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except Exception as e:
+        print(f"[地點資料警告] 無法載入 {LOCATION_DATA_PATH}: {type(e).__name__}: {e}", flush=True)
+        return {
+            name: {
+                "lat": lat,
+                "lon": lon,
+                "aliases": [],
+                "source": "legacy-fallback",
+                "confidence": "high",
+                "review_status": "approved",
+            }
+            for name, (lat, lon) in DEFAULT_KNOWN_LOCATIONS.items()
+        }
+    approved = {}
+    for name, item in data.items():
+        if item.get("review_status") != "approved":
+            continue
+        try:
+            approved[name] = {
+                **item,
+                "lat": coerce_float(item.get("lat")),
+                "lon": coerce_float(item.get("lon")),
+                "aliases": item.get("aliases") or [],
+            }
+        except (TypeError, ValueError) as e:
+            print(f"[地點資料警告] 略過無效地點 {name}: {e}", flush=True)
+    return approved or load_location_data_fallback()
+
+def load_location_data_fallback():
+    return {
+        name: {
+            "lat": lat,
+            "lon": lon,
+            "aliases": [],
+            "source": "legacy-fallback",
+            "confidence": "high",
+            "review_status": "approved",
+        }
+        for name, (lat, lon) in DEFAULT_KNOWN_LOCATIONS.items()
+    }
+
+LOCATION_DATA = load_location_data()
+KNOWN_LOCATIONS = {name: (item["lat"], item["lon"]) for name, item in LOCATION_DATA.items()}
+
+def location_search_terms(name, item):
+    return [name] + [alias for alias in item.get("aliases", []) if alias]
+
+def location_prompt_catalog():
+    entries = []
+    for name, item in LOCATION_DATA.items():
+        entries.append(f"{name}({item['lat']:.3f},{item['lon']:.3f})")
+    return "，".join(entries)
+
+TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
+TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
+AMBIGUOUS_LOCATION_TERMS = {"飛行場", "機場", "山上", "海邊", "海岸", "湖邊"}
+
+class LocationResolutionError(RuntimeError):
+    def __init__(self, location_name, intent, message):
+        super().__init__(message)
+        self.location_name = location_name
+        self.intent = intent
 
 def extract_location_hint(user_query):
     text = user_query.strip()
@@ -907,8 +967,12 @@ def is_ambiguous_location(location_name, user_query):
     return any(candidate in AMBIGUOUS_LOCATION_TERMS for candidate in candidates if candidate)
 
 def find_known_location_in_query(user_query):
-    for name in sorted(KNOWN_LOCATIONS, key=len, reverse=True):
-        if name in user_query:
+    candidates = []
+    for name, item in LOCATION_DATA.items():
+        for term in location_search_terms(name, item):
+            candidates.append((term, name))
+    for term, name in sorted(candidates, key=lambda pair: len(pair[0]), reverse=True):
+        if term in user_query:
             return name
     return ""
 
@@ -1022,11 +1086,7 @@ def parse_intent(user_query):
 "date_start":"YYYY-MM-DD","date_end":"YYYY-MM-DD","targets":[],"extra_notes":""}}
 query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 日期：「這個週末」→最近週六日；具體日期年份用{today_str[:4]}；未指定範圍則首尾同日
-地名座標：日月潭(23.865,120.917),合歡山(24.167,121.283),外澳(24.870,121.862),
-墾丁(21.945,120.803),阿里山(23.517,120.800),嘉明湖(23.250,121.000),
-武陵農場(24.367,121.367),太平山(24.517,121.617),七星山(25.167,121.533),
-清境農場(24.083,121.167),奧萬大(23.850,121.083),桃源谷(25.100,121.867),
-池上(23.124,121.216)。
+已審核地名座標：{location_prompt_catalog()}。
 若地名不在清單，請只解析使用者實際輸入的地點，不可替換成清單中的其他地點。
 若地名太籠統或無法可靠估算，location_name 保留使用者輸入的地名，lat/lon 回 null。"""
     text = call_openrouter(system, user_query, max_tokens=400)

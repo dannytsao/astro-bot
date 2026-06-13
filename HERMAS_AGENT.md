@@ -99,6 +99,27 @@ Spreadsheet ID:
 - 天體位置是否有內建資料；找不到標的不可創造位置。
 - 地點座標解析失敗時，需記錄 requested location 與是否已反問使用者補座標。
 
+## 地點資料庫
+
+Production 地點資料位於：
+
+```text
+data/taiwan_locations.json
+```
+
+規則：
+
+- 只有 `review_status: "approved"` 的地點會被 Bot 載入。
+- 未審核或來源不明的候選地點必須保持 `needs_review`，不可直接用於 production。
+- 新地點需包含 `lat`、`lon`、`aliases`、`region`、`source`、`confidence`、`review_status`。
+- 新增或修改地點後需執行：
+
+```bash
+python3 ~/.codex/skills/taiwan-location-research/scripts/validate_locations.py data/taiwan_locations.json
+```
+
+- 可用 Codex skill `taiwan-location-research` 搜尋台灣本島與離島地點候選座標，但最後標記 `approved` 前仍需人工審核。
+
 ### 用戶反饋
 
 用途：只記錄使用者評分與建議事項。
