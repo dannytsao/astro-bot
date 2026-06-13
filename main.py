@@ -906,6 +906,12 @@ def is_ambiguous_location(location_name, user_query):
     candidates = {location_name, hint}
     return any(candidate in AMBIGUOUS_LOCATION_TERMS for candidate in candidates if candidate)
 
+def find_known_location_in_query(user_query):
+    for name in sorted(KNOWN_LOCATIONS, key=len, reverse=True):
+        if name in user_query:
+            return name
+    return ""
+
 def normalize_intent(intent, user_query):
     if not isinstance(intent, dict):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
@@ -915,32 +921,39 @@ def normalize_intent(intent, user_query):
         supplied_coordinates = extract_user_coordinates(user_query)
     except ValueError as e:
         raise LocationResolutionError(location_name, intent, str(e)) from e
-    for name, (lat, lon) in KNOWN_LOCATIONS.items():
-        if name in user_query or (name == location_name and location_name_matches_query(location_name, user_query)):
-            intent["location_name"] = name
-            intent["lat"] = lat
-            intent["lon"] = lon
-            break
+    known_location = find_known_location_in_query(user_query)
+    if known_location:
+        lat, lon = KNOWN_LOCATIONS[known_location]
+        intent["location_name"] = known_location
+        intent["lat"] = lat
+        intent["lon"] = lon
     else:
-        if supplied_coordinates:
-            intent["lat"], intent["lon"] = supplied_coordinates
-            intent["location_name"] = location_name or "自訂座標"
-        elif is_ambiguous_location(location_name, user_query):
-            location_hint = extract_location_hint(user_query) or location_name
-            intent["location_name"] = location_hint
-            raise LocationResolutionError(
-                location_hint,
-                intent,
-                f"地點名稱過於籠統，無法可靠解析座標：{location_hint}"
-            )
-        elif location_name and not location_name_matches_query(location_name, user_query):
-            location_hint = extract_location_hint(user_query) or location_name
-            intent["location_name"] = location_hint
-            raise LocationResolutionError(
-                location_hint,
-                intent,
-                f"地點解析不可信：使用者輸入像是「{location_hint}」，但解析結果是「{location_name}」。"
-            )
+        for name, (lat, lon) in KNOWN_LOCATIONS.items():
+            if name == location_name and location_name_matches_query(location_name, user_query):
+                intent["location_name"] = name
+                intent["lat"] = lat
+                intent["lon"] = lon
+                break
+        else:
+            if supplied_coordinates:
+                intent["lat"], intent["lon"] = supplied_coordinates
+                intent["location_name"] = location_name or "自訂座標"
+            elif is_ambiguous_location(location_name, user_query):
+                location_hint = extract_location_hint(user_query) or location_name
+                intent["location_name"] = location_hint
+                raise LocationResolutionError(
+                    location_hint,
+                    intent,
+                    f"地點名稱過於籠統，無法可靠解析座標：{location_hint}"
+                )
+            elif location_name and not location_name_matches_query(location_name, user_query):
+                location_hint = extract_location_hint(user_query) or location_name
+                intent["location_name"] = location_hint
+                raise LocationResolutionError(
+                    location_hint,
+                    intent,
+                    f"地點解析不可信：使用者輸入像是「{location_hint}」，但解析結果是「{location_name}」。"
+                )
 
     try:
         intent["lat"] = coerce_float(intent.get("lat"))
