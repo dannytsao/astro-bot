@@ -1,5 +1,15 @@
 # CHANGELOG
 
+## 2026-06-14（服務選單）
+
+### 新增
+
+- Quick Reply 服務選單：輸入「選單」、「功能」、`/menu` 即可叫出
+- 📅 **15天景點氣象評估**：選擇後輸入景點名稱，Bot 自動評估未來 15 天每晚氣象條件
+- ❓ **使用說明**：快捷顯示查詢範例與操作說明
+- `handle_postback` 新增 `menu_weather_15d` 與 `menu_help` 處理
+- `handle_message` 新增 `waiting_weather_location` 狀態，接收景點後背景計算並回覆
+
 ## 2026-06-14
 
 ### 改進

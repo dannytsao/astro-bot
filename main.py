@@ -1863,16 +1863,15 @@ def handle_message(event):
             safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消景點氣象評估。"), "cancel weather 15d")
             mark_message_as_read(mark_as_read_token)
             return
-        # 把用戶輸入當作「地點 + 未來15天」的查詢送進主流程
+        # 直接把用戶輸入（景點 + 可選日期）送進主流程
         user_state.pop(user_id, None)
-        weather_query = f"{text} 未來15天天氣如何"
         mark_message_as_read(mark_as_read_token)
         safe_reply_message(event.reply_token, TextSendMessage(
-            text=f"📅 正在評估 {text} 未來 15 天氣象，請稍候（約 30~60 秒）⏳"
+            text=f"📅 正在查詢 {text} 的氣象條件，請稍候（約 30~60 秒）⏳"
         ), "weather 15d loading")
         thread = threading.Thread(
             target=process_and_reply,
-            args=(user_id, weather_query, mark_as_read_token),
+            args=(user_id, text, mark_as_read_token),
             daemon=True,
         )
         thread.start()
@@ -1975,11 +1974,11 @@ def handle_postback(event):
         safe_reply_message(event.reply_token, TextSendMessage(
             text=(
                 "📅 15天景點氣象評估\n\n"
-                "請輸入景點名稱，例如：\n"
-                "・合歡山\n"
-                "・墾丁\n"
-                "・阿里山\n\n"
-                "我會評估未來 15 天每晚的雲量、能見度與結露風險 🌤"
+                "請輸入景點名稱，可加上日期或區間（15天內），例如：\n"
+                "・合歡山（預設查詢未來數天）\n"
+                "・墾丁 6月20日\n"
+                "・阿里山 6月18日到6月22日\n\n"
+                "我會評估每晚雲量、能見度與結露風險 🌤"
             )
         ), "weather 15d prompt")
     elif data == "menu_help":
