@@ -1819,6 +1819,8 @@ def handle_message(event):
             intent["lat"] = lat
             intent["lon"] = lon
             intent["location_name"] = pending.get("location_name") or intent.get("location_name") or "自訂座標"
+            # 用戶提供座標 → 存入自定義地點，下次直接解析
+            save_custom_location(intent["location_name"], lat, lon, original_query=pending.get("text", ""))
             user_state.pop(user_id, None)
             user_pending_location_query.pop(user_id, None)
 
