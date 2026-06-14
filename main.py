@@ -272,14 +272,19 @@ def init_sheets():
     except gspread.WorksheetNotFound:
         ws_feedback = sh.add_worksheet("用戶反饋", rows=1000, cols=3)
         ws_feedback.append_row(["日期及時間","Line User Name","建議事項的內容"])
-    return ws_query, ws_feedback
+    try:
+        ws_locations = sh.worksheet("自定義地點")
+    except gspread.WorksheetNotFound:
+        ws_locations = sh.add_worksheet("自定義地點", rows=500, cols=5)
+        ws_locations.append_row(["地點名稱", "緯度", "經度", "新增時間", "原始查詢"])
+    return ws_query, ws_feedback, ws_locations
 
 try:
-    ws_query, ws_feedback = init_sheets()
+    ws_query, ws_feedback, ws_locations = init_sheets()
     print("✅ Google Sheets 連線成功", flush=True)
 except Exception as e:
     print(f"⚠️ Google Sheets 連線失敗：{describe_exception(e)}", flush=True)
-    ws_query = ws_feedback = None
+    ws_query = ws_feedback = ws_locations = None
 
 
 @app.route("/", methods=["GET"])
@@ -926,6 +931,56 @@ def load_location_data_fallback():
 LOCATION_DATA = load_location_data()
 KNOWN_LOCATIONS = {name: (item["lat"], item["lon"]) for name, item in LOCATION_DATA.items()}
 
+def load_custom_locations():
+    """啟動時從 Google Sheets「自定義地點」載入用戶提供的地點，合併進 LOCATION_DATA。"""
+    if not ws_locations:
+        return
+    try:
+        rows = ws_locations.get_all_values()
+        if len(rows) <= 1:
+            return  # 只有標題列
+        for row in rows[1:]:
+            if len(row) < 3:
+                continue
+            name, lat_str, lon_str = row[0].strip(), row[1].strip(), row[2].strip()
+            if not name or name in LOCATION_DATA:
+                continue
+            try:
+                lat, lon = coerce_float(lat_str), coerce_float(lon_str)
+            except ValueError:
+                continue
+            LOCATION_DATA[name] = {
+                "lat": lat, "lon": lon, "aliases": [],
+                "source": "user-provided", "confidence": "user",
+                "review_status": "approved",
+            }
+            KNOWN_LOCATIONS[name] = (lat, lon)
+        print(f"[自定義地點] 已載入 {len(rows)-1} 筆用戶地點", flush=True)
+    except Exception as e:
+        print(f"[自定義地點] 載入失敗：{describe_exception(e)}", flush=True)
+
+def save_custom_location(name, lat, lon, original_query=""):
+    """將用戶提供座標的新地點存入 Sheets 並更新記憶體。"""
+    if name in LOCATION_DATA:
+        existing_lat, existing_lon = KNOWN_LOCATIONS.get(name, (None, None))
+        if existing_lat == lat and existing_lon == lon:
+            return  # 完全相同，不重複儲存
+    LOCATION_DATA[name] = {
+        "lat": lat, "lon": lon, "aliases": [],
+        "source": "user-provided", "confidence": "user",
+        "review_status": "approved",
+    }
+    KNOWN_LOCATIONS[name] = (lat, lon)
+    if ws_locations:
+        try:
+            ts = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+            ws_locations.append_row([name, str(lat), str(lon), ts, original_query[:100]])
+            print(f"[自定義地點] 已儲存：{name} ({lat}, {lon})", flush=True)
+        except Exception as e:
+            print(f"[自定義地點] 儲存失敗：{describe_exception(e)}", flush=True)
+
+load_custom_locations()  # 啟動時載入用戶自定義地點
+
 def location_search_terms(name, item):
     return [name] + [alias for alias in item.get("aliases", []) if alias]
 
@@ -1025,6 +1080,12 @@ def normalize_intent(intent, user_query):
             if supplied_coordinates:
                 intent["lat"], intent["lon"] = supplied_coordinates
                 intent["location_name"] = location_name or "自訂座標"
+                # 用戶明確提供座標 → 存入自定義地點資料庫，下次直接解析
+                save_custom_location(
+                    intent["location_name"],
+                    intent["lat"], intent["lon"],
+                    original_query=user_query,
+                )
             elif is_ambiguous_location(location_name, user_query):
                 location_hint = extract_location_hint(user_query) or location_name
                 intent["location_name"] = location_hint
