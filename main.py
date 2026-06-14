@@ -1856,6 +1856,28 @@ def handle_message(event):
         print(f"[許願] {username}: {text}", flush=True)
         return
 
+    # 15天景點氣象評估：等待用戶輸入地點
+    if user_state.get(user_id) == "waiting_weather_location":
+        if text in ["取消", "cancel", "Cancel", "CANCEL"]:
+            user_state.pop(user_id, None)
+            safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消景點氣象評估。"), "cancel weather 15d")
+            mark_message_as_read(mark_as_read_token)
+            return
+        # 把用戶輸入當作「地點 + 未來15天」的查詢送進主流程
+        user_state.pop(user_id, None)
+        weather_query = f"{text} 未來15天天氣如何"
+        mark_message_as_read(mark_as_read_token)
+        safe_reply_message(event.reply_token, TextSendMessage(
+            text=f"📅 正在評估 {text} 未來 15 天氣象，請稍候（約 30~60 秒）⏳"
+        ), "weather 15d loading")
+        thread = threading.Thread(
+            target=process_and_reply,
+            args=(user_id, weather_query, mark_as_read_token),
+            daemon=True,
+        )
+        thread.start()
+        return
+
     # 直接以文字送出的許願/建議。這可補上 Render 重啟造成 waiting_wish 記憶體遺失的情境。
     if is_direct_wish_text(text):
         username = get_display_name(user_id)
@@ -1866,6 +1888,26 @@ def handle_message(event):
         ), "direct wish reply")
         mark_message_as_read(mark_as_read_token)
         print(f"[許願-文字] {username}: {text}", flush=True)
+        return
+
+    # 服務選單
+    if text in ["/menu", "menu", "選單", "服務", "功能"]:
+        safe_reply_message(event.reply_token, TextSendMessage(
+            text="🔭 請選擇服務：",
+            quick_reply=QuickReply(items=[
+                QuickReplyButton(action=PostbackAction(
+                    label="📅 15天景點氣象評估",
+                    data="menu_weather_15d",
+                    displayText="15天景點氣象評估",
+                )),
+                QuickReplyButton(action=PostbackAction(
+                    label="❓ 使用說明",
+                    data="menu_help",
+                    displayText="使用說明",
+                )),
+            ])
+        ), "menu reply")
+        mark_message_as_read(mark_as_read_token)
         return
 
     # 說明指令
@@ -1928,6 +1970,29 @@ def handle_postback(event):
         print(f"[許願-自動] {username}: {wish}", flush=True)
     elif data == "wish_skip":
         safe_reply_message(event.reply_token, TextSendMessage(text="好的 👍"), "wish skip reply")
+    elif data == "menu_weather_15d":
+        user_state[user_id] = "waiting_weather_location"
+        safe_reply_message(event.reply_token, TextSendMessage(
+            text=(
+                "📅 15天景點氣象評估\n\n"
+                "請輸入景點名稱，例如：\n"
+                "・合歡山\n"
+                "・墾丁\n"
+                "・阿里山\n\n"
+                "我會評估未來 15 天每晚的雲量、能見度與結露風險 🌤"
+            )
+        ), "weather 15d prompt")
+    elif data == "menu_help":
+        safe_reply_message(event.reply_token, TextSendMessage(
+            text=(
+                "🔭 天文攝影查詢 Bot\n\n"
+                "直接用自然語言問我，例如：\n"
+                "・4月15日 合歡山 銀河\n"
+                "・這個週末 阿里山 有什麼可以拍？\n"
+                "・5月1日到3日 墾丁 天蠍座\n\n"
+                "或輸入「選單」隨時叫出服務選單 🌌"
+            )
+        ), "menu help reply")
 
 
 # ── 主程式 ────────────────────────────────────────────────────
