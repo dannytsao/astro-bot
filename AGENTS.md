@@ -59,7 +59,7 @@
 | 變數名稱 | 說明 |
 |---|---|
 | `OPENROUTER_API_KEY` | OpenRouter API 金鑰 |
-| `OPENROUTER_MODEL` | OpenRouter 模型，預設 `google/gemini-2.5-flash` |
+| `OPENROUTER_MODEL` | OpenRouter runtime 模型；Render 有設定時以環境變數為準，未設定時預設 `anthropic/claude-sonnet-4.5` |
 | `OPENROUTER_SITE_URL` | OpenRouter attribution URL，預設 Render service URL |
 | `OPENROUTER_APP_NAME` | OpenRouter attribution app name，預設 `astro-bot` |
 | `ANTHROPIC_API_KEY` | Legacy fallback；若暫時未建立 `OPENROUTER_API_KEY`，可讀取此變數中的 OpenRouter key |

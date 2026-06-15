@@ -46,7 +46,8 @@ Do not revive the older priority order that treated Clear Outside, Meteoblue, JP
 - Runtime entrypoint: `main.py`
 - Render import fallback: `app.py`
 - LLM runtime: OpenRouter chat completions
-- Default `OPENROUTER_MODEL`: `google/gemini-2.5-flash`
+- Runtime model: `OPENROUTER_MODEL` from Render/OpenRouter env when configured
+- Default `OPENROUTER_MODEL` fallback: `anthropic/claude-sonnet-4.5`
 - Production locations: `data/taiwan_locations.json`, approved entries only
 
 ## Non-Negotiable Rules

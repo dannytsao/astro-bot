@@ -53,8 +53,10 @@ def describe_line_token():
     return f"length={len(LINE_ACCESS_TOKEN)}, fingerprint={fingerprint_line_access_token()}"
 
 OPENROUTER_API_KEY, OPENROUTER_API_KEY_SOURCE = read_openrouter_api_key()
-OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", "google/gemini-2.5-flash")
-OPENROUTER_FALLBACK_MODELS = os.environ.get("OPENROUTER_FALLBACK_MODELS", "google/gemini-2.5-flash,openai/gpt-4o-mini")
+DEFAULT_OPENROUTER_MODEL = "anthropic/claude-sonnet-4.5"
+OPENROUTER_MODEL_SOURCE = "OPENROUTER_MODEL" if os.environ.get("OPENROUTER_MODEL", "").strip() else "default"
+OPENROUTER_MODEL     = os.environ.get("OPENROUTER_MODEL", DEFAULT_OPENROUTER_MODEL)
+OPENROUTER_FALLBACK_MODELS = os.environ.get("OPENROUTER_FALLBACK_MODELS", "openai/gpt-4o-mini")
 OPENROUTER_SITE_URL  = os.environ.get("OPENROUTER_SITE_URL", "https://astro-bot-l9ae.onrender.com")
 OPENROUTER_APP_NAME  = os.environ.get("OPENROUTER_APP_NAME", "astro-bot")
 LINE_CHANNEL_SECRET  = os.environ.get("LINE_CHANNEL_SECRET")
@@ -303,6 +305,8 @@ def healthz():
         "openrouter_key_fingerprint": fingerprint_openrouter_key(),
         "openrouter_key_probe": OPENROUTER_KEY_PROBE_STATUS,
         "openrouter_model": OPENROUTER_MODEL,
+        "openrouter_model_source": OPENROUTER_MODEL_SOURCE,
+        "openrouter_model_default": DEFAULT_OPENROUTER_MODEL,
         "openrouter_fallback_models": openrouter_model_sequence(),
         "line_token_configured": bool(LINE_ACCESS_TOKEN),
         "line_token_length": len(LINE_ACCESS_TOKEN or ""),
