@@ -143,7 +143,9 @@ curl $RENDER_DEPLOY_HOOK   # 自動觸發 Render deploy
 
 ---
 
-## 內建地點座標（12 個）
+## 地點資料庫
+
+Production 地點資料位於 `data/taiwan_locations.json`。只有 `review_status: "approved"` 的地點會被 Bot 載入；下表是早期核心地點範例，不代表完整資料庫。
 
 | 地點 | 緯度 | 經度 |
 |---|---|---|
