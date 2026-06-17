@@ -1667,6 +1667,12 @@ def generate_reply(result):
 【重要】氣象條件是第一優先判斷：
 {weather_instruction}
 
+【反樂觀守則】（優先於所有格式指引，不可因「完整分析」而放寬）
+- CCI < 40 的日期：該日結論第一句必須是「不建議出勤」或「不值得出勤」，禁止用任何正面語氣帶過
+- CCI 40–59 的日期：禁止出現「仍有機會」「值得一試」「把握機會」「運氣好的話」「也許」等模糊鼓勵語氣
+- 下方「必須點出的風險」清單中的每一條都必須在回覆正文明確出現，禁止合併、省略或用正面說法抵消
+- 若某因子得分 ≤ 15，該因子是出勤障礙，必須以明確的否定或警告措辭說明，不可用「偏高」「稍差」輕描淡寫
+
 回覆格式（每區塊標題用【】，依氣象狀態調整詳細程度）：
 
 【結論】
@@ -1714,24 +1720,48 @@ def generate_reply(result):
 - 總長不超過 500 字"""
 
     cci_list = []
+    risk_flags = []
+    factor_labels = {
+        "cloud":        "雲量",
+        "dark_window":  "暗空窗口",
+        "seeing":       "視寧度",
+        "transparency": "透明度",
+        "target":       "目標可見性",
+        "dew":          "結露風險",
+    }
     for m in moon_info:
         d = m["date"]
         cci = cci_by_date.get(d, {})
-        if cci:
-            bd = cci.get("breakdown", {})
-            cci_list.append({
-                "日期": d.isoformat(),
-                "信心度": f"{cci['score']}%",
-                "標籤": cci["label"],
-                "雲量": bd.get("cloud", {}).get("raw", "N/A"),
-                "暗空窗口": bd.get("dark_window", {}).get("raw", "N/A"),
-                "視寧度": bd.get("seeing", {}).get("raw", "N/A"),
-                "透明度": bd.get("transparency", {}).get("raw", "N/A"),
-                "目標可見性": bd.get("target", {}).get("raw", "N/A"),
-                "結露風險": bd.get("dew", {}).get("raw", "N/A"),
-                "資料完整性": cci.get("completeness", "unknown"),
-            })
+        if not cci:
+            continue
+        bd = cci.get("breakdown", {})
+        date_str = d.strftime("%m/%d")
+        cci_list.append({
+            "日期": d.isoformat(),
+            "信心度": f"{cci['score']}%",
+            "標籤": cci["label"],
+            "雲量": bd.get("cloud", {}).get("raw", "N/A"),
+            "暗空窗口": bd.get("dark_window", {}).get("raw", "N/A"),
+            "視寧度": bd.get("seeing", {}).get("raw", "N/A"),
+            "透明度": bd.get("transparency", {}).get("raw", "N/A"),
+            "目標可見性": bd.get("target", {}).get("raw", "N/A"),
+            "結露風險": bd.get("dew", {}).get("raw", "N/A"),
+            "資料完整性": cci.get("completeness", "unknown"),
+        })
+        if cci["score"] < 40:
+            risk_flags.append(
+                f"【{date_str}】整體 CCI={cci['score']}%（{cci['label']}）"
+                f"—結論必須以「不建議/不值得出勤」開頭"
+            )
+        for key, label in factor_labels.items():
+            factor = bd.get(key, {})
+            if factor.get("score", 100) <= 15:
+                risk_flags.append(
+                    f"【{date_str}】{label}出勤障礙：{factor.get('raw', '?')}"
+                    f"（得分 {factor.get('score')}/100）—必須明確說明此點不利出勤"
+                )
     cci_str = json.dumps(cci_list, ensure_ascii=False, indent=2) if cci_list else "無 CCI 資料"
+    risk_text = "\n".join(f"- {f}" for f in risk_flags) if risk_flags else "（本次查詢無高風險項目）"
 
     return call_openrouter(
         system,
@@ -1749,6 +1779,7 @@ def generate_reply(result):
             f"月相與暗空窗口：\n{ms}\n\n"
             + (f"銀河構圖資訊：\n{mw_str}\n\n" if mw_str is not None else "")
             + f"出勤信心指數（CCI）：\n{cci_str}\n\n"
+            + f"必須點出的風險：\n{risk_text}\n\n"
             + f"流星雨：{ss}"
         ),
         max_tokens=1000,
