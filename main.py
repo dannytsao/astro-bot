@@ -1379,6 +1379,18 @@ def run_query(user_query, prefetched_intent=None):
     transp_values = [v["transparency"] for v in seeing_data.values() if v.get("transparency", -1) > 0]
     avg_seeing       = round(sum(seeing_values) / len(seeing_values), 1) if seeing_values else -1
     avg_transparency = round(sum(transp_values) / len(transp_values), 1) if transp_values else -1
+
+    cci_by_date = {}
+    for m in moon_info:
+        d = m["date"]
+        wins_for_date = [w for w in all_windows if w["datetime_tst"].date() == d]
+        cci_by_date[d] = compute_cci_for_date(
+            weather.get(d, {}),
+            m,
+            seeing_data.get(d, {}),
+            wins_for_date,
+        )
+
     return {
         "intent":      intent,
         "good_windows": good[:10],
@@ -1393,7 +1405,116 @@ def run_query(user_query, prefetched_intent=None):
         "avg_seeing":                avg_seeing,
         "avg_transparency":          avg_transparency,
         "data_quality":              data_quality,
+        "cci_by_date":               cci_by_date,
     }
+
+
+# ── 出勤信心指數（CCI） ────────────────────────────────────────
+
+def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date):
+    """每晚出勤信心指數（0–100）。純 Python 計算，不依賴 LLM。"""
+    breakdown = {}
+    completeness_flags = []
+
+    # 1. 雲量 (35%)
+    weather_ok = weather_day.get("data_status") == "ok"
+    cloud = weather_day.get("cloud_cover", -1)
+    if not weather_ok or cloud < 0:
+        cloud_score, cloud_raw = 0, "氣象資料缺失"
+        completeness_flags.append("weather_missing")
+    elif cloud <= 20:  cloud_score, cloud_raw = 100, f"雲量 {cloud}%"
+    elif cloud <= 40:  cloud_score, cloud_raw = 80,  f"雲量 {cloud}%"
+    elif cloud <= 60:  cloud_score, cloud_raw = 40,  f"雲量 {cloud}%"
+    elif cloud <= 80:  cloud_score, cloud_raw = 15,  f"雲量 {cloud}%"
+    else:              cloud_score, cloud_raw = 0,   f"雲量 {cloud}%"
+    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": 0.35}
+
+    # 2. 有效暗空窗口 (25%)
+    dark_wins = moon_info_day.get("dark_windows", [])
+    if not dark_wins:
+        dark_score, dark_raw = 0, "無有效暗空窗口"
+    else:
+        total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
+        h, m = divmod(total_min, 60)
+        dark_raw = f"暗空 {h}h{m:02d}m" if total_min > 0 else "暗空窗口極短"
+        if total_min >= 300:   dark_score = 100
+        elif total_min >= 240: dark_score = 90
+        elif total_min >= 120: dark_score = 65
+        elif total_min >= 60:  dark_score = 35
+        elif total_min >= 30:  dark_score = 15
+        else:                  dark_score = 5
+    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": 0.25}
+
+    # 3. 視寧度 (15%)  7Timer: 1=最佳, 8=最差
+    seeing_ok = seeing_day.get("data_status") == "ok"
+    seeing = seeing_day.get("seeing", -1)
+    if not seeing_ok or seeing <= 0:
+        seeing_score, seeing_raw = 50, "視寧度資料缺失"
+        completeness_flags.append("seeing_missing")
+    elif seeing <= 2: seeing_score, seeing_raw = 100, f"視寧度 {seeing}/8（優）"
+    elif seeing <= 3: seeing_score, seeing_raw = 75,  f"視寧度 {seeing}/8（良）"
+    elif seeing <= 4: seeing_score, seeing_raw = 50,  f"視寧度 {seeing}/8（中）"
+    elif seeing <= 5: seeing_score, seeing_raw = 25,  f"視寧度 {seeing}/8（差）"
+    else:             seeing_score, seeing_raw = 0,   f"視寧度 {seeing}/8（很差）"
+    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": 0.15}
+
+    # 4. 大氣透明度 (10%)  7Timer: 1=最佳, 8=最差
+    transp = seeing_day.get("transparency", -1)
+    if not seeing_ok or transp <= 0:
+        transp_score, transp_raw = 50, "透明度資料缺失"
+    elif transp <= 2: transp_score, transp_raw = 100, f"透明度 {transp}/8（優）"
+    elif transp <= 3: transp_score, transp_raw = 75,  f"透明度 {transp}/8（良）"
+    elif transp <= 4: transp_score, transp_raw = 50,  f"透明度 {transp}/8（中）"
+    elif transp <= 5: transp_score, transp_raw = 25,  f"透明度 {transp}/8（差）"
+    else:             transp_score, transp_raw = 0,   f"透明度 {transp}/8（很差）"
+    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": 0.10}
+
+    # 5. 目標天體可見性 (10%)
+    in_dark = any(w.get("in_dark_window", False) for w in windows_for_date)
+    has_win  = len(windows_for_date) > 0
+    if in_dark:   target_score, target_raw = 100, "暗空窗口內可見"
+    elif has_win: target_score, target_raw = 50,  "僅月光時段可見"
+    else:         target_score, target_raw = 0,   "目標不可見"
+    breakdown["target"] = {"score": target_score, "raw": target_raw, "weight": 0.10}
+
+    # 6. 結露 / 起霧風險 (5%)
+    if not weather_ok:
+        dew_score, dew_raw = 80, "結露資料缺失"
+    else:
+        temp   = weather_day.get("temp_c")
+        dew_pt = weather_day.get("dew_point_c")
+        if temp is None or dew_pt is None:
+            dew_score, dew_raw = 80, "結露資料缺失"
+        else:
+            diff = temp - dew_pt
+            if diff >= 3.0:   dew_score, dew_raw = 100, f"T−Td={diff:.1f}°C（安全）"
+            elif diff >= 1.5: dew_score, dew_raw = 50,  f"T−Td={diff:.1f}°C（注意）"
+            else:             dew_score, dew_raw = 0,   f"T−Td={diff:.1f}°C（高風險）"
+    breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": 0.05}
+
+    score = round(
+        cloud_score  * 0.35 +
+        dark_score   * 0.25 +
+        seeing_score * 0.15 +
+        transp_score * 0.10 +
+        target_score * 0.10 +
+        dew_score    * 0.05
+    )
+
+    if "weather_missing" in completeness_flags and "seeing_missing" in completeness_flags:
+        completeness = "astronomy_only"
+    elif completeness_flags:
+        completeness = "partial"
+    else:
+        completeness = "full"
+
+    if score >= 80:   label = "✅ 強烈推薦出勤"
+    elif score >= 60: label = "🟢 值得出勤"
+    elif score >= 40: label = "⚠️ 謹慎考慮"
+    elif score >= 20: label = "🟠 不建議"
+    else:             label = "❌ 不值得出勤"
+
+    return {"score": score, "label": label, "breakdown": breakdown, "completeness": completeness}
 
 
 # ── 回覆生成 ───────────────────────────────────────────────────
@@ -1411,6 +1532,7 @@ def generate_reply(result):
     showers   = result["showers"]
     mw_comp   = result["mw_composition_by_date"]
     data_quality = result.get("data_quality", {})
+    cci_by_date  = result.get("cci_by_date", {})
 
     windows_for_llm = good if good else sorted(
         all_wins, key=lambda w: w.get("alt_deg", 0), reverse=True
@@ -1548,14 +1670,12 @@ def generate_reply(result):
 回覆格式（每區塊標題用【】，依氣象狀態調整詳細程度）：
 
 【結論】
-- 若查詢跨多天：每天一行，icon 代表「這天值不值得去」的最終建議：
-  ✅ = 天氣與天文都好，值得前往
-  ⚠️ = 天氣或天文其中一項有顧慮（例如月光縮短暗空、能見度偏低）
-  ❌ = 天況或天文條件太差，不建議
-  格式：「04/08 ⚠️ 雲量X%・能見度Xkm，[天文或氣象問題說明]」
-  最後一行：「➡️ 最佳：04/XX 凌晨 HH:MM，[一句話原因]」
-- 若查詢單天：一句話點出最佳時刻＋天況（氣象＋天文各一個重點）
-- 每行只用一個 icon 代表綜合建議，不要同時出現兩個 icon 造成混淆
+- 直接採用下方「出勤信心指數（CCI）」中計算好的 icon 和分數，不可自行更改數值
+- 若查詢跨多天：每天一行
+  格式：「MM/DD {{CCI_icon}} 信心度 XX%｜{{最重要的 1~2 個因子摘要}}」
+  例：「06/20 ✅ 信心度 78%｜雲量22%・暗空4.5h」
+  最後一行：「➡️ 最佳：MM/DD，[一句話原因]」
+- 若查詢單天：CCI icon + 分數，加最佳時刻和最重要一個條件說明
 - 目標：讓用戶一眼看出哪幾天能去、哪天最好、為什麼
 
 【推薦時刻】Top 3，每條格式：
@@ -1593,6 +1713,26 @@ def generate_reply(result):
 - 天況不佳時主動建議替代方案（改期、換地點、轉攻其他題材）
 - 總長不超過 500 字"""
 
+    cci_list = []
+    for m in moon_info:
+        d = m["date"]
+        cci = cci_by_date.get(d, {})
+        if cci:
+            bd = cci.get("breakdown", {})
+            cci_list.append({
+                "日期": d.isoformat(),
+                "信心度": f"{cci['score']}%",
+                "標籤": cci["label"],
+                "雲量": bd.get("cloud", {}).get("raw", "N/A"),
+                "暗空窗口": bd.get("dark_window", {}).get("raw", "N/A"),
+                "視寧度": bd.get("seeing", {}).get("raw", "N/A"),
+                "透明度": bd.get("transparency", {}).get("raw", "N/A"),
+                "目標可見性": bd.get("target", {}).get("raw", "N/A"),
+                "結露風險": bd.get("dew", {}).get("raw", "N/A"),
+                "資料完整性": cci.get("completeness", "unknown"),
+            })
+    cci_str = json.dumps(cci_list, ensure_ascii=False, indent=2) if cci_list else "無 CCI 資料"
+
     return call_openrouter(
         system,
         (
@@ -1608,6 +1748,7 @@ def generate_reply(result):
             f"候選時刻{candidate_context}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             + (f"銀河構圖資訊：\n{mw_str}\n\n" if mw_str is not None else "")
+            + f"出勤信心指數（CCI）：\n{cci_str}\n\n"
             + f"流星雨：{ss}"
         ),
         max_tokens=1000,

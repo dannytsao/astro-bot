@@ -1,100 +1,254 @@
 # astro-bot Roadmap
 
-This document is the product roadmap source of truth. `README.md` can summarize user-facing scope, and `AGENTS.md` can summarize agent/development context, but roadmap priority changes should be reflected here first.
+產品路線圖的唯一來源。`README.md` 提供使用者面的功能摘要，`AGENTS.md` 提供開發 agent 的摘要，但路線圖優先順序異動必須在此處先反映。
 
-## Product Principle
+---
 
-astro-bot is not only a Milky Way planner. It should help Taiwan photographers decide whether a sky or astronomy scene is worth going out for, based on reliable astronomy calculations, weather conditions, landscape constraints, and practical photography risk.
+## 產品願景
 
-The bot should support:
+成為台灣天文攝影者的**智慧出勤顧問**。
+
+不只回答天體位置，而是幫攝影者做出最省力、最划算的出勤決策：從「值不值得去」，到「去的話怎麼安排」。
+
+---
+
+## 產品原則
+
+astro-bot 不是銀河計算機，也不是旅遊 App。它是**攝影出勤決策引擎**，核心問題永遠是：
+
+> 「這次出勤值得嗎？如果值得，怎麼做最省力？」
+
+支援範圍：
 
 - 深空與星野：銀河、星座、星雲、星系、流星雨、彗星等
-- 日月行星運行景象：月出月落、月相、日月方位、行星與月亮接近、行星可見性等
+- 日月行星運行景象：月出月落、月相、日月方位、行星可見性、行星合月等
 - 天氣與地景條件：雲量、透明度、視寧度、結露、霧、雲海、海岸潮汐等
 - 攝影決策：去哪裡、何時拍、風險是什麼、備案地點與器材提醒
+- 出勤規劃：幾點出發、住宿區域建議、多日最佳夜次選擇
 
-新增日月行星題材時必須先接入可靠天文資料來源與計算邏輯；在資料未完成前，仍須維持現有攔截與「不猜測」原則。
+---
 
-## Current Product Scope
+## 不可妥協的原則（Operating Guardrails）
 
-- LINE Bot on Render, implemented primarily in `main.py`.
-- Natural-language Chinese queries for Taiwan astrophotography planning.
-- Approved Taiwan location database in `data/taiwan_locations.json`.
-- Skyfield-based calculations for target altitude/azimuth, astronomical twilight, moonrise/moonset, moon phase, dark-sky windows, and Milky Way composition direction.
-- Open-Meteo weather inputs for cloud cover, temperature, humidity, dew point, wind, and visibility where available.
-- OpenRouter-powered intent parsing and reply generation.
-- Google Sheets logging for query records and user feedback/wishlist input.
-- Quick Reply service menu triggered by `選單`, `功能`, `服務`, `menu`, or `/menu`.
+- **不猜測**：天文計算與座標必須來自程式碼或可信資料來源；LLM 只能解釋與摘要，不可發明天體位置、氣象、視寧度、潮汐或地點座標
+- **氣象優先**：天候是第一道 Go/No-Go 關卡；天況差時必須給出清楚的 No-Go，不得在天文分析後輕描淡寫地補一句「但天氣不好」
+- **攔截未知**：未支援或尚未整合的查詢必須攔截，明確說明限制，不讓 LLM 以推測填補
+- **地點審核制**：只有 `review_status: "approved"` 的地點可進 production；未知地點請使用者補座標
+- **後勤資訊免責**：住宿、道路、入場限制等後勤資訊應標示「建議自行確認最新狀態」，不以 Bot 作為即時保證來源
+- **部署門禁**：所有 production 變更必須通過 `HERMAS_AGENT.md` 的 dry-run gate 後才可 commit/push/deploy
 
-## Operating Guardrails
+---
 
-- Astronomy calculations and coordinates must come from code or trusted data sources. The LLM may explain and summarize, but must not invent positions, weather, seeing, transparency, tides, or location coordinates.
-- Unsupported or not-yet-integrated topics must be intercepted or answered with explicit data limitations.
-- Weather is the first go/no-go filter. Bad weather should produce a clear no-go conclusion instead of a long optimistic astronomy analysis.
-- When target matching fails, return an empty target set or ask for clarification; do not fall back to the full target catalog.
-- Production changes must pass the dry-run gate in `HERMAS_AGENT.md` before commit/push/deploy.
+## KPI 框架
 
-## Near-Term Priority: Phase 3A
+下列指標用於評估各階段是否達到離開條件。
 
-Focus: upgrade from single-place analysis to practical outing decisions using mostly existing data.
-
-| Priority | Feature | Notes |
+| 指標 | 定義 | 追蹤方式 |
 | --- | --- | --- |
-| Highest | Confidence score / CCI | Add a quantitative confidence indicator beyond ✅/⚠️/❌. |
-| Highest | Red-team risk logic | Make replies explicitly state the strongest reason not to go, reducing over-optimistic conclusions. |
-| Highest | Location comparison mode | Support queries like `合歡山 vs 阿里山`, comparing CCI, dark windows, moonlight, cloud cover, dew/fog risk, and transparency if available. |
-| High | Tonight / weekend best location | Rank approved locations for questions like `今晚哪裡最好拍` or `這週末去哪裡`. |
-| High | Multi-subject decision framework | CCI should work for Milky Way, nebulae, meteor showers, moon scenes, planetary/moon events, fog, and cloud-sea scenes. |
+| MAU | 月活躍用戶數（當月至少發出一次查詢） | LINE User ID，Google Sheets 查詢記錄 |
+| 查詢滿意率 | 👍 ÷ (👍 + 👎) | Google Sheets 用戶反饋 |
+| P90 回應時間 | 90% 查詢從送出到收到完整回覆的秒數 | Render Logs |
+| 30 日留存率 | 首次查詢後 30 天內再次查詢的用戶比率 | Google Sheets 查詢記錄 |
+| 平均查詢頻率 | 每位 MAU 當月平均查詢次數 | Google Sheets 查詢記錄 |
 
-Already completed:
+---
 
-- Dew/fog threshold tightened to `T - Td < 1.5°C`.
-- Dynamic formatting hides Milky Way composition details unless relevant.
-- Basic exposure suggestions are included when conditions are suitable.
+## 版本現況（v2，2026-06）
 
-## Phase 3B: Planning UX And Data Operations
+已完成的功能：
 
-| Priority | Feature | Notes |
+- LINE Bot + Render Web Service，Flask Webhook 24 小時持續運行
+- 自然語言中文查詢，不需要特定格式
+- 14 個天體標的（銀河核心、5 星座、7 星雲/星系、彗星、5 流星雨）
+- Skyfield 天文計算：仰角、方位角、月出月落、天文薄暮、有效暗空窗口、銀河構圖方位角
+- Open-Meteo 氣象預報（15 天）：雲量、溫度、濕度、露點、風、能見度
+- 結露風險提醒（T - Td < 1.5°C）
+- 曝光建議（500 法則快門、依月相 ISO、光圈）
+- 用戶評分 👍👎 與許願池 💡（Google Sheets）
+- 多用戶隔離
+- 自動重啟
+- 113 個台灣 approved 地點（含 aliases）
+- 15 天景點氣象日曆（服務選單功能）
+- 快捷服務選單（`選單` / `/menu`）
+
+---
+
+## Phase 3：決策品質升級
+
+**主題：從「能查到資料」→ 「能給出可信賴的出勤決策」**
+
+**進入條件：** v2 已上線（已滿足）
+
+---
+
+### 3A：核心決策引擎（最高優先）
+
+3A 全部完成後才開始 3B。
+
+| 開發順序 | 功能 | 說明 |
 | --- | --- | --- |
-| High | Location wishlist review flow | Review Google Sheets location wishes, add sources/coordinates/aliases/access notes, then promote approved entries into `data/taiwan_locations.json`. |
-| Medium | Backup location suggestions | Recommend nearby approved alternatives when lowland fog or local cloud risk is high. |
-| Medium | Cloud sea / fog mode | Build a distinct judgement style for `想拍雲海` and `會不會起霧`, initially using humidity, dew point spread, elevation, and known place traits. |
-| Medium | Sun/moon/planet scene planning | Add moon/sun direction, moon phase, planet visibility, and conjunction topics only after reliable data and calculations are in place. |
-| Medium | 15-day calendar summary | Compress the 15-day weather assessment into daily go/no-go ranking plus top details. |
-| Medium | Reply speed optimization | Reduce the current 30-60 second path by combining LLM calls, caching, or avoiding unnecessary generation. |
-| Low | Light pollution index | Add static sky brightness as a low-weight CCI factor after data is sourced. |
+| 1 | 信心度指標（CCI） | 在 ✅/⚠️/❌ 之外加入「信心度 XX%」，量化預報不確定性，讓用戶知道「這個建議可以賭多少」 |
+| 2 | 紅藍軍對抗邏輯 | 每次回覆必須明確列出「最強不去理由」；防止 LLM 過度樂觀，建立使用者信任 |
+| 3 | 地點比較模式 | 支援「合歡山 vs 阿里山」查詢；比較項目：CCI、暗空窗口、月光干擾、雲量、結露、透明度 |
+| 4 | 今晚 / 週末最佳地點 | 從 approved 地點中排名，回答「今晚哪裡最好拍」；注意同時計算多地點的效能影響 |
+| 5 | 多題材 CCI 框架 | CCI 可套用於星雲、流星雨、月景、日月行星、雲海等，不只服務銀河核心查詢 |
 
-## Phase 4: Personalization And Subscription
+---
 
-| Priority | Feature | Notes |
+### 3B：規劃 UX 與資料營運（3A 完成後進行）
+
+| 開發順序 | 功能 | 說明 |
 | --- | --- | --- |
-| High | User location/device memory | Store common locations, focal length, camera model, tracker availability, and preferred shooting style. |
-| High | Saved observation plans | Let users save plans like `6/20 合歡山銀河` and ask for later updates. |
-| Medium | Subscription push | Monitor a date range and push when conditions become favorable. |
-| Medium | Closed-loop learning | Use feedback to improve location-specific forecast trust and support exceptional-event markers. |
+| 1 | 回覆速度優化 | 目標 P90 < 15 秒（現況 30–60 秒）；**先立即回傳「計算中...」確認訊息**，再合併 LLM 呼叫；這是留存率的最大障礙，優先處理 |
+| 2 | 地點資料庫擴充（後勤欄位） | 在 `taiwan_locations.json` 加入：Bortle 指數（光害等級）、海拔、入場限制、車程基準、停車資訊、附近補給城鎮、是否可露營 |
+| 3 | 備案地點建議 | 低地起霧或本地雲量高時，推薦附近破霧高度以上的替代地點 |
+| 4 | 多日最佳夜選擇 | 使用者輸入「這個週末」時，明確比較各夜並推薦最佳出勤夜次 |
+| 5 | 器材建議 | 依地點（海拔、氣溫）與目標給出器材提醒（建議焦段、電池備量、防露帶、赤道儀需求） |
+| 6 | 地點許願池審核流程 | 建立半自動流程：Google Sheets 許願 → 座標格式驗證 → 人工補資訊 → approved；高頻未命中地點優先處理 |
+| 7 | 雲海 / 霧判斷模式 | 針對「想拍雲海」「會不會起霧」建立獨立判斷邏輯，使用濕度、露點差、海拔與地點特性 |
+| 8 | 日月行星景象規劃 | 接入可靠天文資料來源與計算邏輯後才開放；未完成前維持攔截與「不猜測」原則 |
+| 9 | 15 天日曆摘要優化 | 每日 Go/No-Go 排名 + Top 3 詳情，比現有純氣象表格更具決策意義 |
+| 10 | 語音輸入支援 | 接收 LINE 音訊訊息（AAC）→ Google Gemini API 語音轉文字 → 轉成文字後進入現有查詢流程；先以 Gemini 2.5 Flash 試行，效果不足再升 2.5 Pro；辨識失敗時回覆「沒有聽清楚，請用文字輸入」，不將低信心結果送入查詢流程；需在實作前確認 Gemini API 對 LINE AAC 格式的直接支援，或評估是否需要格式轉換 |
 
-## Deferred Until Data Or Demand Is Proven
+---
 
-| Priority | Feature | Reason |
-| --- | --- | --- |
-| Validate first | Layered cloud data source | Evaluate Taiwan coverage, reliability, cost, and licensing before integrating Clear Outside or alternatives. |
-| Validate first | Vertical humidity gradient | Valuable for cloud sea/fog, but only after data source and accuracy are validated. |
-| Later | Tide data | Build when coastal nightscape demand becomes strong enough. |
-| Later | Meteoblue seeing index | Existing 7Timer seeing/transparency should be used first for CCI experiments. |
-| Later | Real-time comet coordinates | Use wishlist demand to decide whether JPL Horizons integration is worth the complexity. |
-| Later | CCTV / satellite image verification | High risk of overinterpretation; defer until the core decision engine is mature. |
+### 離開 Phase 3 的指標（全部達到才進 Phase 4）
 
-## Dropped From Core Roadmap
-
-| Feature | Reason |
+| 指標 | 門檻 |
 | --- | --- |
-| Drone flight safety warnings | Pulls the product into flight safety and legal responsibility beyond astronomy photography planning. |
-| Restricted-area database | Local rules change often; use general reminders instead of maintaining a high-liability database. |
+| MAU | ≥ 50 |
+| 查詢滿意率 | ≥ 75% |
+| P90 回應時間 | < 15 秒 |
+| CCI 功能上線 | ✅ 且被正常使用 |
+| 地點比較功能上線 | ✅ |
 
-## Success Criteria
+---
 
-- Users can ask whether, where, and when to go shooting, not only whether one target is above the horizon.
-- Replies clearly separate hard data, uncertainty, and practical recommendation.
-- The bot says "no data" or asks for clarification when reliable inputs are missing.
-- Bad-weather and high-risk cases produce decisive no-go guidance.
-- Location comparison and best-location queries produce concise, defensible rankings.
+## Phase 4：出勤規劃層（How to Go）
+
+**主題：從「值不值得去」→「去的話怎麼安排最省力」**
+
+**進入條件：** Phase 3 離開指標全部達到
+
+---
+
+### 4A：出勤規劃基礎（最高優先）
+
+| 開發順序 | 功能 | 說明 |
+| --- | --- | --- |
+| 1 | 出發時間建議 | 根據用戶所在城市（或輸入出發地）+ 地點車程基準 + 暗空窗口開始時間，推算「建議幾點出發、幾點可離開返家」 |
+| 2 | 靜態住宿策展 | 各景點附近建議住宿城鎮與類型（民宿聚落、露營地、車宿）；標示「請自行確認即時房況」；不接即時訂房 API，先驗證需求 |
+| 3 | 道路與入場限制提醒 | 靜態資料：各地點特殊限制（嘉明湖入山許可、合歡山冬季封山條件）；明確標示「建議出發前確認最新公告」 |
+| 4 | 完整出勤簡報 | 整合天況（CCI）+ 出發時間 + 住宿建議 + 器材提醒 + 入場注意，一次回覆完整出勤計劃 |
+
+---
+
+### 4B：個人化（4A 完成後進行）
+
+| 開發順序 | 功能 | 說明 |
+| --- | --- | --- |
+| 1 | 用戶基本資料記憶 | 儲存常用出發城市、慣用地點；讓 Bot 不需每次詢問出發地 |
+| 2 | 器材檔案記憶 | 儲存鏡頭焦段、相機型號、是否有赤道儀；用於個人化器材建議與曝光計算 |
+| 3 | 觀測計劃保存 | 使用者可儲存「6/20 合歡山銀河」，日後查詢時 Bot 自動更新條件並比較 |
+
+---
+
+### 離開 Phase 4 的指標（全部達到才進 Phase 5）
+
+| 指標 | 門檻 |
+| --- | --- |
+| MAU | ≥ 150 |
+| 30 日留存率 | ≥ 35% |
+| 查詢滿意率 | ≥ 80% |
+| 完整出勤簡報使用率 | ≥ 20%（相對總查詢數） |
+| 個人化資料填寫率 | ≥ 25%（相對 MAU） |
+
+---
+
+## Phase 5：訂閱與閉環學習
+
+**主題：從「被動工具」→「主動顧問」；建立商業化基礎**
+
+**進入條件：** Phase 4 離開指標全部達到
+
+---
+
+### 開發順序
+
+| 開發順序 | 功能 | 說明 |
+| --- | --- | --- |
+| 1 | 訂閱推播（免費版） | 使用者設定觀測計劃後，Bot 主動監測天況並於好轉時推播通知 |
+| 2 | 閉環學習：預報誤差追蹤 | 利用 👍👎 資料追蹤各地點氣象預報準確率；找出系統性高估 / 低估地點 |
+| 3 | Premium 訂閱方案 | 付費功能：即時推播、多地點同時追蹤、進階個人化偏好設定 |
+| 4 | 閉環學習：地點修正模型 | 以歷史反饋對各地點氣象預報進行修正（微氣候調整），提升 CCI 準確率 |
+
+---
+
+### 離開 Phase 5 的指標（進入長期維運）
+
+| 指標 | 門檻 |
+| --- | --- |
+| MAU | ≥ 500 |
+| 付費轉換率（Premium） | ≥ 5% |
+| CCI 準確率提升（閉環模型介入後） | 可量化的改善 |
+
+---
+
+## 待驗證後才做
+
+在以下條件達到前不投入開發資源。
+
+| 功能 | 驗證門檻 |
+| --- | --- |
+| 雲層分層資料來源（Clear Outside 等） | 確認台灣覆蓋範圍與穩定性，且許願池有 > 10 則相關需求 |
+| 垂直濕度梯度 | 確認資料來源與判斷準確度後評估整合 |
+| 即時訂房 API（Booking.com / Agoda） | Phase 4 靜態策展上線後，確認使用者有明確訂房意圖再評估 |
+| 即時路況 / Google Maps 整合 | Phase 4 出發時間功能使用率確認後評估 |
+| 潮汐數據 | 海岸類查詢占月總查詢 > 15% 時才做 |
+| Meteoblue Seeing Index | 現有 7Timer 資料無法支撐 CCI 需求後評估 |
+| 彗星即時座標（JPL Horizons） | 許願池相關需求 > 20 則 |
+| CCTV / 衛星雲圖即時驗證 | 核心決策引擎成熟後評估；過早加入有過度解讀風險 |
+
+---
+
+## 永久不做
+
+| 功能 | 原因 |
+| --- | --- |
+| 無人機飛安警告 | 拉入飛安法規責任，超出天文攝影決策核心定位 |
+| 管制區資料庫 | 法規變動風險高；以一般提醒取代，不維護高責任資料庫 |
+| 通用旅遊行程規劃 | 非天文攝影差異化，競品太多，定位模糊 |
+
+---
+
+## 整體進程一覽
+
+```
+                v2（現況）    Phase 3A     Phase 3B     Phase 4      Phase 5
+主題            基礎查詢      決策品質     規劃 UX      出勤規劃     訂閱 / 商業化
+─────────────────────────────────────────────────────────────────────────────────
+核心功能        天文計算      CCI 信心度   速度 <15s    出發時間     訂閱推播
+                氣象預報      紅藍軍邏輯   地點資料擴充  住宿策展     Premium 方案
+                15天日曆      地點比較     備案地點     完整出勤簡報  閉環學習
+                用戶反饋      最佳地點排名  多日最佳夜   個人化記憶
+                113 地點      多題材 CCI   器材建議     觀測計劃保存
+
+MAU 目標        追蹤中        ≥ 50         ≥ 50         ≥ 150        ≥ 500
+查詢滿意率      追蹤中        ≥ 75%        ≥ 75%        ≥ 80%        ≥ 85%
+P90 回應時間    30–60s        —            < 15s        < 10s        < 10s
+30 日留存率     追蹤中        —            —            ≥ 35%        ≥ 45%
+```
+
+---
+
+## 已完成項目記錄
+
+| 完成日期 | 功能 |
+| --- | --- |
+| 2026-06-10 | 結露臨界值收緊（T−Td 從 3°C 改為 1.5°C） |
+| 2026-06-10 | 銀河構圖區塊動態化（非銀河查詢不顯示無關構圖資訊） |
+| 2026-06-10 | 曝光建議加入 system prompt（500 法則、依月相 ISO、光圈） |
+| 2026-06-12 | Production 修復：Render Web Service、LINE Webhook、健康檢查 |
+| 2026-06-13 | 地點資料移至 `data/taiwan_locations.json`，支援 aliases |
+| 2026-06-14 | 地點資料庫擴充至 113 筆 approved 地點 |
+| 2026-06-14 | 快捷服務選單（`選單` / `/menu`）+ 15 天氣象日曆功能 |

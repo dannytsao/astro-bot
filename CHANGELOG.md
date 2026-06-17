@@ -1,5 +1,18 @@
 # CHANGELOG
 
+## 2026-06-17（出勤信心指數 CCI）
+
+### 新增
+
+- **CCI（出勤信心指數）**：純 Python 計算，每晚 0–100 分，不依賴 LLM。
+  - 六個加權因子：雲量 35%、有效暗空窗口 25%、視寧度 15%、透明度 10%、目標可見性 10%、結露風險 5%
+  - 標籤：✅ 強烈推薦（≥80）、🟢 值得出勤（≥60）、⚠️ 謹慎考慮（≥40）、🟠 不建議（≥20）、❌ 不值得出勤（<20）
+  - 資料缺失時安全降級：氣象缺失→雲量得 0，7Timer 缺失→視寧度/透明度給中性 50 分
+- `compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date)` 新函式
+- `run_query()` 返回值新增 `cci_by_date` dict（以 date 為 key）
+- `generate_reply()` system prompt【結論】格式更新，要求 LLM 直接使用 CCI icon 和分數
+- CCI 明細以 JSON 形式傳入 LLM user content，讓回覆包含「信心度 XX%」
+
 ## 2026-06-14（服務選單）
 
 ### 新增
