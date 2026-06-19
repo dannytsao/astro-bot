@@ -1074,6 +1074,18 @@ def extract_compare_locations_from_text(user_query):
 
 def extract_inline_coordinate_location_name(user_query, fallback_name=""):
     """Best-effort place name for queries like '南橫啞口 23.264, 120.961'."""
+    prefix = re.split(r"-?\d+(?:\.\d+)?", user_query, maxsplit=1)[0]
+    prefix = re.sub(
+        r"(今天|今晚|明天|後天|這個週末|週末|下週[一二三四五六日天]?)",
+        " ",
+        prefix,
+    )
+    prefix = re.sub(r"(拍|觀測|適合|可以|能不能|可不可以|有沒有|好不好|查詢|搜尋|看)", " ", prefix)
+    prefix = re.sub(r"(銀河|星座|星雲|星系|流星雨|彗星|月亮|月景)", " ", prefix)
+    prefix = re.sub(r"\s+", " ", prefix).strip(" ，,。？?：:")
+    if prefix:
+        return normalize_location_name_text(prefix)
+
     text = re.sub(
         r"(?:lat(?:itude)?|緯度|北緯|座標)?\s*[=:：]?\s*-?\d+(?:\.\d+)?\s*[,，、]\s*"
         r"(?:lon(?:gitude)?|lng|經度|東經)?\s*[=:：]?\s*-?\d+(?:\.\d+)?",
@@ -1091,7 +1103,14 @@ def extract_inline_coordinate_location_name(user_query, fallback_name=""):
     text = re.sub(r"(銀河|星座|星雲|星系|流星雨|彗星|月亮|月景)", " ", text)
     text = re.sub(r"(拍|觀測|適合|可以|能不能|可不可以|有沒有|好不好|查詢|搜尋|看)", " ", text)
     text = re.sub(r"\s+", " ", text).strip(" ，,。？?：:")
-    return text or fallback_name or "自訂座標"
+    return normalize_location_name_text(text or fallback_name or "自訂座標")
+
+def normalize_location_name_text(location_name):
+    normalized = str(location_name or "").strip()
+    typo_map = {
+        "南橫亞口": "南橫啞口",
+    }
+    return typo_map.get(normalized, normalized)
 
 def apply_inline_coordinates(intent, user_query, fallback_name=""):
     coordinates = extract_user_coordinates(user_query)
