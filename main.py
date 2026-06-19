@@ -1999,8 +1999,8 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
             intent_a = {**base, "location_name": name_a, "lat": lat_a, "lon": lon_a}
             intent_b = {**base, "location_name": name_b, "lat": lat_b, "lon": lon_b}
             with ThreadPoolExecutor(max_workers=2) as pool:
-                future_a = pool.submit(run_query, text, intent_a)
-                future_b = pool.submit(run_query, text, intent_b)
+                future_a = pool.submit(run_query, name_a, intent_a)
+                future_b = pool.submit(run_query, name_b, intent_b)
                 result_a = future_a.result()
                 result_b = future_b.result()
             reply = generate_comparison_reply(result_a, result_b)
