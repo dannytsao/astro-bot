@@ -1138,6 +1138,10 @@ def resolve_compare_location(loc_dict):
     for kname, (klat, klon) in KNOWN_LOCATIONS.items():
         if name.lower() == kname.lower():
             return kname, klat, klon
+    for kname, item in LOCATION_DATA.items():
+        for alias in item.get("aliases", []):
+            if name == alias or name.lower() == alias.lower():
+                return kname, item["lat"], item["lon"]
     try:
         lat = coerce_float(lat)
         lon = coerce_float(lon)
@@ -1207,6 +1211,8 @@ def parse_intent(user_query):
 "location_name":"地點A","lat":緯度A,"lon":經度A,
 "date_start":"YYYY-MM-DD","date_end":"YYYY-MM-DD","targets":[],"extra_notes":""}}
 注意：只有明確比較兩個具體地點才設 compare_mode=true；「台北去合歡山」不是比較，不設 true。
+句型舉例：「是鳶峰好還是日月潭好」→ locations=[{{name:"鳶峰",...}},{{name:"日月潭",...}}]；「是」字開頭是強調語氣，不是地名，第一個地名緊接在「是」之後。
+locations 兩個 name 必須不同；如果兩個地點相同，表示解析錯誤，請重新仔細讀查詢。
 
 query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 日期：「這個週末」→最近週六日；具體日期年份用{today_str[:4]}；未指定範圍則首尾同日
@@ -1963,6 +1969,12 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
                 safe_push_message(user_id, TextSendMessage(
                     text=f"⚠️ {loc_err}\n\n比較模式目前只支援已審核地點，請單獨查詢或補充座標後再試。"
                 ), "compare location resolution error")
+                mark_message_as_read(mark_as_read_token)
+                return
+            if name_a == name_b:
+                safe_push_message(user_id, TextSendMessage(
+                    text=f"⚠️ 兩個地點都解析成「{name_a}」，無法進行比較。\n請確認格式，例如：「鳶峰 vs 日月潭 今晚銀河」"
+                ), "compare same location error")
                 mark_message_as_read(mark_as_read_token)
                 return
             base = {k: v for k, v in intent_for_check.items()
