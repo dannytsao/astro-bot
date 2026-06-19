@@ -1059,6 +1059,19 @@ def find_known_location_in_query(user_query):
             return name
     return ""
 
+def extract_compare_locations_from_text(user_query):
+    """Split on compare keywords and find one location per half; returns (name_a, name_b) or (None, None)."""
+    for sep in ["vs", "VS", "Vs", "還是", "比較", "對比", "哪裡比較好", "哪個好"]:
+        if sep in user_query:
+            idx = user_query.index(sep)
+            left  = user_query[:idx]
+            right = user_query[idx + len(sep):]
+            loc_a = find_known_location_in_query(left)
+            loc_b = find_known_location_in_query(right)
+            if loc_a and loc_b and loc_a != loc_b:
+                return loc_a, loc_b
+    return None, None
+
 def normalize_intent(intent, user_query):
     if not isinstance(intent, dict):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
@@ -1955,7 +1968,11 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
             return
 
         if intent_for_check.get("compare_mode"):
-            locations = intent_for_check.get("locations") or []
+            text_loc_a, text_loc_b = extract_compare_locations_from_text(text)
+            if text_loc_a and text_loc_b:
+                locations = [{"name": text_loc_a}, {"name": text_loc_b}]
+            else:
+                locations = intent_for_check.get("locations") or []
             if len(locations) < 2:
                 safe_push_message(user_id, TextSendMessage(
                     text="⚠️ 比較模式需要兩個地點，請重新輸入，例如：「合歡山 vs 阿里山 這週末銀河」"
