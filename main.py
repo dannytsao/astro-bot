@@ -1842,7 +1842,7 @@ def generate_reply(result):
 
 
 def generate_comparison_reply(result_a, result_b):
-    """兩地點 CCI 並排比較，回傳 LLM 生成的中文回覆。"""
+    """兩地點 CCI 並排比較，回傳穩定、不可被 LLM 改寫的中文回覆。"""
     intent_a = result_a["intent"]
     intent_b = result_b["intent"]
     moon_a   = result_a["moon_info"]
@@ -1851,7 +1851,8 @@ def generate_comparison_reply(result_a, result_b):
     name_a   = intent_a["location_name"]
     name_b   = intent_b["location_name"]
 
-    comparison = []
+    lines = ["【比較結論】"]
+    best = None
     for m in moon_a:
         d  = m["date"]
         ca = cci_a.get(d, {})
@@ -1863,45 +1864,38 @@ def generate_comparison_reply(result_a, result_b):
         icon_a  = re.match(r"^\S+", ca["label"]).group()
         icon_b  = re.match(r"^\S+", cb["label"]).group()
         diff = score_a - score_b
-        if abs(diff) < 10:
-            verdict = "條件相近（差距<10%，選交通較近者）"
+
+        if score_a < 40 and score_b < 40:
+            verdict = "兩地都不建議，建議改期或改拍題材"
+        elif diff == 0:
+            verdict = "完全同分，選交通較便利者"
         elif diff > 0:
-            verdict = f"{name_a} 較佳（+{diff}%）"
+            verdict = f"{name_a} {'略優' if diff < 10 else '較佳'}（+{diff}%）"
         else:
-            verdict = f"{name_b} 較佳（+{abs(diff)}%）"
-        comparison.append({
-            "日期": d.isoformat(),
-            name_a: f"{icon_a} {score_a}%",
-            name_b: f"{icon_b} {score_b}%",
-            "建議": verdict,
-        })
+            verdict = f"{name_b} {'略優' if abs(diff) < 10 else '較佳'}（+{abs(diff)}%）"
 
-    comparison_str = json.dumps(comparison, ensure_ascii=False, indent=2)
-    date_range = f"{intent_a['date_start']} ～ {intent_a['date_end']}"
+        lines.append(
+            f"{d.month:02d}/{d.day:02d}  {name_a} {icon_a} {score_a}%  vs  "
+            f"{name_b} {icon_b} {score_b}%  → {verdict}"
+        )
 
-    system = """你是專業天文攝影顧問。繁體中文，親切專業。
+        winner_name, winner_score = (name_a, score_a) if score_a >= score_b else (name_b, score_b)
+        if best is None or winner_score > best["score"]:
+            best = {"date": d, "name": winner_name, "score": winner_score, "diff": abs(diff)}
 
-【硬性資料原則】
-- 只能根據輸入資料作答，CCI 分數和 icon 不可更改
-- 只使用 CCI 定義的五個 icon（✅ 🟢 ⚠️ 🟠 ❌），禁止使用 ⛔ 🚫 等
+    if not best:
+        return "【比較結論】\n目前缺少可比較的 CCI 資料，請換一天或重新查詢。"
 
-【反樂觀守則】
-- 若兩地 CCI 都 < 40：明確說兩地都不建議，勿美化條件
-- 差距 < 10%：說「條件相近，選交通便利者」，不推薦其中一個
+    if best["score"] < 40:
+        lines.append("➡️ 最佳：兩地條件都偏差，建議改期或改拍月景、城市夜景等題材。")
+    else:
+        qualifier = "，但差距小，仍建議出發前再確認即時雲量" if best["diff"] < 10 else ""
+        lines.append(
+            f"➡️ 最佳：{best['date'].month:02d}/{best['date'].day:02d} "
+            f"{best['name']}，信心度 {best['score']}%{qualifier}。"
+        )
 
-回覆格式：
-【比較結論】
-每天一行：MM/DD  地點A {icon}{分數}%  vs  地點B {icon}{分數}%  → 建議
-最後一行：➡️ 最佳：MM/DD 地點名，信心度 XX%，一句話原因
-若兩地均不適合：最後一行說建議改期或改拍題材
-總長不超過 300 字"""
-
-    user_content = (
-        f"查詢地點：{name_a} vs {name_b}\n"
-        f"日期：{date_range}\n\n"
-        f"CCI 比較資料：\n{comparison_str}"
-    )
-    return call_openrouter(system, user_content, max_tokens=600)
+    return "\n".join(lines)
 
 
 # ── LINE Bot 狀態管理 ─────────────────────────────────────────
