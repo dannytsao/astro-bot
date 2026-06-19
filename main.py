@@ -1228,7 +1228,7 @@ def extract_user_coordinates(text):
     patterns = [
         r"(?:lat(?:itude)?|緯度|北緯)\s*[=:：]?\s*(-?\d+(?:\.\d+)?)\D+"
         r"(?:lon(?:gitude)?|lng|經度|東經)\s*[=:：]?\s*(-?\d+(?:\.\d+)?)",
-        r"(-?\d+(?:\.\d+)?)\s*[,，、]\s*(-?\d+(?:\.\d+)?)",
+        r"(-?\d+\.\d+)\s*[,，、]\s*(-?\d+\.\d+)",
         r"(-?\d+\.\d+)\s+(-?\d+\.\d+)",
     ]
     for pattern in patterns:
@@ -1244,7 +1244,7 @@ def extract_user_coordinates(text):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError(f"座標超出全球合法範圍：lat={lat}, lon={lon}")
         return lat, lon
-    numbers = re.findall(r"-?\d+(?:\.\d+)?", normalized)
+    numbers = re.findall(r"-?\d+\.\d+", normalized)
     for idx in range(len(numbers) - 1):
         first = float(numbers[idx])
         second = float(numbers[idx + 1])
