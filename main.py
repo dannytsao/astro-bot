@@ -1,4 +1,5 @@
 import hashlib, http.client, math, requests, json, re, logging, os, threading, traceback
+from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime, timedelta, timezone, date
 from pathlib import Path
@@ -1126,6 +1127,30 @@ def normalize_intent(intent, user_query):
 
     return intent
 
+def resolve_compare_location(loc_dict):
+    """比較模式專用：解析單一地點 dict，回傳 (name, lat, lon) 或拋 LocationResolutionError。"""
+    name = str(loc_dict.get("name") or "").strip()
+    lat  = loc_dict.get("lat")
+    lon  = loc_dict.get("lon")
+    if name in KNOWN_LOCATIONS:
+        lat, lon = KNOWN_LOCATIONS[name]
+        return name, lat, lon
+    for kname, (klat, klon) in KNOWN_LOCATIONS.items():
+        if name.lower() == kname.lower():
+            return kname, klat, klon
+    try:
+        lat = coerce_float(lat)
+        lon = coerce_float(lon)
+        if lat is not None and lon is not None and -90 <= lat <= 90 and -180 <= lon <= 180:
+            return name, lat, lon
+    except (TypeError, ValueError):
+        pass
+    raise LocationResolutionError(
+        name, {},
+        f"比較地點「{name}」不在審核地點資料庫，比較模式目前只支援已審核地點"
+    )
+
+
 def is_in_taiwan_loose_range(lat, lon):
     return (
         TAIWAN_LOOSE_LAT_RANGE[0] <= lat <= TAIWAN_LOOSE_LAT_RANGE[1]
@@ -1170,9 +1195,19 @@ def location_coordinate_prompt(location_name):
 def parse_intent(user_query):
     today_str = date.today().isoformat()
     system = f"""你是天文攝影查詢系統的意圖解析器。今天是 {today_str}。
-從用戶查詢中提取以下欄位，以 JSON 格式回覆，絕對不要加任何說明文字或 markdown。
-{{"query_type":"A或B","location_name":"地名","lat":緯度,"lon":經度,
+以 JSON 回覆，不加說明或 markdown。
+
+【標準查詢】（預設）：
+{{"query_type":"A或B","compare_mode":false,"location_name":"地名","lat":緯度,"lon":經度,
 "date_start":"YYYY-MM-DD","date_end":"YYYY-MM-DD","targets":[],"extra_notes":""}}
+
+【地點比較查詢】用戶用「vs」「還是」「比較」「哪裡比較好」「哪個好」「對比」明確比較兩個地點時：
+{{"query_type":"A或B","compare_mode":true,
+"locations":[{{"name":"地點A","lat":緯度A,"lon":經度A}},{{"name":"地點B","lat":緯度B,"lon":經度B}}],
+"location_name":"地點A","lat":緯度A,"lon":經度A,
+"date_start":"YYYY-MM-DD","date_end":"YYYY-MM-DD","targets":[],"extra_notes":""}}
+注意：只有明確比較兩個具體地點才設 compare_mode=true；「台北去合歡山」不是比較，不設 true。
+
 query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 日期：「這個週末」→最近週六日；具體日期年份用{today_str[:4]}；未指定範圍則首尾同日
 已審核地名座標：{location_prompt_catalog()}。
@@ -1787,6 +1822,69 @@ def generate_reply(result):
     )
 
 
+def generate_comparison_reply(result_a, result_b):
+    """兩地點 CCI 並排比較，回傳 LLM 生成的中文回覆。"""
+    intent_a = result_a["intent"]
+    intent_b = result_b["intent"]
+    moon_a   = result_a["moon_info"]
+    cci_a    = result_a.get("cci_by_date", {})
+    cci_b    = result_b.get("cci_by_date", {})
+    name_a   = intent_a["location_name"]
+    name_b   = intent_b["location_name"]
+
+    comparison = []
+    for m in moon_a:
+        d  = m["date"]
+        ca = cci_a.get(d, {})
+        cb = cci_b.get(d, {})
+        if not ca or not cb:
+            continue
+        score_a = ca["score"]
+        score_b = cb["score"]
+        icon_a  = re.match(r"^\S+", ca["label"]).group()
+        icon_b  = re.match(r"^\S+", cb["label"]).group()
+        diff = score_a - score_b
+        if abs(diff) < 10:
+            verdict = "條件相近（差距<10%，選交通較近者）"
+        elif diff > 0:
+            verdict = f"{name_a} 較佳（+{diff}%）"
+        else:
+            verdict = f"{name_b} 較佳（+{abs(diff)}%）"
+        comparison.append({
+            "日期": d.isoformat(),
+            name_a: f"{icon_a} {score_a}%",
+            name_b: f"{icon_b} {score_b}%",
+            "建議": verdict,
+        })
+
+    comparison_str = json.dumps(comparison, ensure_ascii=False, indent=2)
+    date_range = f"{intent_a['date_start']} ～ {intent_a['date_end']}"
+
+    system = """你是專業天文攝影顧問。繁體中文，親切專業。
+
+【硬性資料原則】
+- 只能根據輸入資料作答，CCI 分數和 icon 不可更改
+- 只使用 CCI 定義的五個 icon（✅ 🟢 ⚠️ 🟠 ❌），禁止使用 ⛔ 🚫 等
+
+【反樂觀守則】
+- 若兩地 CCI 都 < 40：明確說兩地都不建議，勿美化條件
+- 差距 < 10%：說「條件相近，選交通便利者」，不推薦其中一個
+
+回覆格式：
+【比較結論】
+每天一行：MM/DD  地點A {icon}{分數}%  vs  地點B {icon}{分數}%  → 建議
+最後一行：➡️ 最佳：MM/DD 地點名，信心度 XX%，一句話原因
+若兩地均不適合：最後一行說建議改期或改拍題材
+總長不超過 300 字"""
+
+    user_content = (
+        f"查詢地點：{name_a} vs {name_b}\n"
+        f"日期：{date_range}\n\n"
+        f"CCI 比較資料：\n{comparison_str}"
+    )
+    return call_openrouter(system, user_content, max_tokens=600)
+
+
 # ── LINE Bot 狀態管理 ─────────────────────────────────────────
 # user_state:                  {user_id: "waiting_wish" | "waiting_location_coordinates"}
 # user_last_query:             {user_id: "上次查詢文字"}
@@ -1848,6 +1946,43 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
             ), "unsupported notice")
             mark_message_as_read(mark_as_read_token)
             print(f"[攔截] 不支援查詢：{labels}", flush=True)
+            return
+
+        if intent_for_check.get("compare_mode"):
+            locations = intent_for_check.get("locations") or []
+            if len(locations) < 2:
+                safe_push_message(user_id, TextSendMessage(
+                    text="⚠️ 比較模式需要兩個地點，請重新輸入，例如：「合歡山 vs 阿里山 這週末銀河」"
+                ), "compare mode location count error")
+                mark_message_as_read(mark_as_read_token)
+                return
+            try:
+                name_a, lat_a, lon_a = resolve_compare_location(locations[0])
+                name_b, lat_b, lon_b = resolve_compare_location(locations[1])
+            except LocationResolutionError as loc_err:
+                safe_push_message(user_id, TextSendMessage(
+                    text=f"⚠️ {loc_err}\n\n比較模式目前只支援已審核地點，請單獨查詢或補充座標後再試。"
+                ), "compare location resolution error")
+                mark_message_as_read(mark_as_read_token)
+                return
+            base = {k: v for k, v in intent_for_check.items()
+                    if k not in ("locations", "compare_mode", "location_name", "lat", "lon")}
+            intent_a = {**base, "location_name": name_a, "lat": lat_a, "lon": lon_a}
+            intent_b = {**base, "location_name": name_b, "lat": lat_b, "lon": lon_b}
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                future_a = pool.submit(run_query, text, intent_a)
+                future_b = pool.submit(run_query, text, intent_b)
+                result_a = future_a.result()
+                result_b = future_b.result()
+            reply = generate_comparison_reply(result_a, result_b)
+            user_last_query[user_id] = text
+            log_query(username, user_id, text, intent_a, {})
+            safe_push_message(user_id, TextSendMessage(
+                text=reply,
+                quick_reply=make_feedback_quick_reply()
+            ), "compare reply")
+            mark_message_as_read(mark_as_read_token)
+            print("[回覆] 比較模式完成", flush=True)
             return
 
         result = run_query(text, prefetched_intent=intent_for_check)

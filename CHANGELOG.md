@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-06-17（地點比較模式）
+
+### 新增
+
+- **地點比較模式（Phase 3A #3）**：支援「合歡山 vs 阿里山 這週末銀河」語氣查詢
+  - `parse_intent()` system prompt 新增 compare_mode 偵測（「vs」「還是」「比較」「哪裡比較好」等語氣）
+  - `resolve_compare_location()` 輔助函式：從審核地點 DB 解析比較地點座標
+  - `generate_comparison_reply(result_a, result_b)`：兩地點 CCI 並排比較 + LLM 生成建議
+  - `process_and_reply()` 新增 compare_mode 分支：ThreadPoolExecutor 並行跑兩次 run_query
+  - 差距 < 10% 自動標注「條件相近」；兩地均不適合時明確說改期
+  - 若比較地點不在審核 DB，顯示明確提示而非進入座標補充流程
+
 ## 2026-06-17（反樂觀守則 + 風險旗幟）
 
 ### 改進
