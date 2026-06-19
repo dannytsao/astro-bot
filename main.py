@@ -1093,6 +1093,20 @@ def extract_inline_coordinate_location_name(user_query, fallback_name=""):
     text = re.sub(r"\s+", " ", text).strip(" ，,。？?：:")
     return text or fallback_name or "自訂座標"
 
+def apply_inline_coordinates(intent, user_query, fallback_name=""):
+    coordinates = extract_user_coordinates(user_query)
+    if not coordinates:
+        return None
+    updated = dict(intent or {})
+    updated["lat"], updated["lon"] = coordinates
+    updated["location_name"] = extract_inline_coordinate_location_name(user_query, fallback_name)
+    save_custom_location(
+        updated["location_name"],
+        updated["lat"], updated["lon"],
+        original_query=user_query,
+    )
+    return updated
+
 def normalize_intent(intent, user_query):
     if not isinstance(intent, dict):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
@@ -1104,14 +1118,7 @@ def normalize_intent(intent, user_query):
         raise LocationResolutionError(location_name, intent, str(e)) from e
 
     if supplied_coordinates:
-        intent["lat"], intent["lon"] = supplied_coordinates
-        intent["location_name"] = extract_inline_coordinate_location_name(user_query, location_name)
-        save_custom_location(
-            intent["location_name"],
-            intent["lat"], intent["lon"],
-            original_query=user_query,
-        )
-        return intent
+        return apply_inline_coordinates(intent, user_query, location_name)
 
     known_location = find_known_location_in_query(user_query)
     if known_location:
@@ -1218,6 +1225,14 @@ def extract_user_coordinates(text):
         if not (-90 <= lat <= 90 and -180 <= lon <= 180):
             raise ValueError(f"座標超出全球合法範圍：lat={lat}, lon={lon}")
         return lat, lon
+    numbers = re.findall(r"-?\d+(?:\.\d+)?", normalized)
+    for idx in range(len(numbers) - 1):
+        first = float(numbers[idx])
+        second = float(numbers[idx + 1])
+        if 118.0 <= first <= 123.8 and 20.0 <= second <= 26.5:
+            return second, first
+        if -90 <= first <= 90 and -180 <= second <= 180:
+            return first, second
     return None
 
 def location_coordinate_prompt(location_name):
@@ -2059,6 +2074,41 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
 
     except LocationResolutionError as e:
         requested_location = e.location_name or extract_location_hint(text) or text
+        try:
+            coordinate_intent = apply_inline_coordinates(e.intent, text, requested_location)
+        except ValueError:
+            coordinate_intent = None
+        if coordinate_intent:
+            scope = check_unsupported(text, coordinate_intent)
+            if scope["has_unsupported"]:
+                labels = "、".join(scope["unsupported_labels"])
+                notice = (
+                    f"⚠️ 目前版本尚不支援：{labels}\n\n"
+                    f"很抱歉，這個查詢超出目前的功能範圍。\n"
+                    f"想把這個需求加入許願池，讓我們優先開發嗎？"
+                )
+                user_wish_text[user_id] = scope["wish_text"]
+                user_last_query[user_id] = text
+                safe_push_message(user_id, TextSendMessage(
+                    text=notice,
+                    quick_reply=make_unsupported_quick_reply()
+                ), "unsupported notice after coordinate fallback")
+                mark_message_as_read(mark_as_read_token)
+                return
+
+            result = run_query(text, prefetched_intent=coordinate_intent)
+            reply = generate_reply(result)
+            reply = f"{format_location_resolution(result['intent'], text)}\n\n{reply}"
+            user_last_query[user_id] = text
+            log_query(username, user_id, text, result["intent"], result.get("data_quality"))
+            safe_push_message(user_id, TextSendMessage(
+                text=reply,
+                quick_reply=make_feedback_quick_reply()
+            ), "query reply after coordinate fallback")
+            mark_message_as_read(mark_as_read_token)
+            print("[回覆] 座標 fallback 完成", flush=True)
+            return
+
         wish_saved = log_wish(
             username,
             user_id,
