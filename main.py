@@ -1072,6 +1072,27 @@ def extract_compare_locations_from_text(user_query):
                 return loc_a, loc_b
     return None, None
 
+def extract_inline_coordinate_location_name(user_query, fallback_name=""):
+    """Best-effort place name for queries like '南橫啞口 23.264, 120.961'."""
+    text = re.sub(
+        r"(?:lat(?:itude)?|緯度|北緯|座標)?\s*[=:：]?\s*-?\d+(?:\.\d+)?\s*[,，、]\s*"
+        r"(?:lon(?:gitude)?|lng|經度|東經)?\s*[=:：]?\s*-?\d+(?:\.\d+)?",
+        " ",
+        user_query,
+        flags=re.IGNORECASE,
+    )
+    text = re.sub(
+        r"(今天|今晚|明天|後天|這個週末|週末|下週[一二三四五六日天]?)",
+        " ",
+        text,
+    )
+    for target in TARGET_LIBRARY:
+        text = text.replace(target["name"], " ")
+    text = re.sub(r"(銀河|星座|星雲|星系|流星雨|彗星|月亮|月景)", " ", text)
+    text = re.sub(r"(拍|觀測|適合|可以|能不能|可不可以|有沒有|好不好|查詢|搜尋|看)", " ", text)
+    text = re.sub(r"\s+", " ", text).strip(" ，,。？?：:")
+    return text or fallback_name or "自訂座標"
+
 def normalize_intent(intent, user_query):
     if not isinstance(intent, dict):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
@@ -1081,6 +1102,17 @@ def normalize_intent(intent, user_query):
         supplied_coordinates = extract_user_coordinates(user_query)
     except ValueError as e:
         raise LocationResolutionError(location_name, intent, str(e)) from e
+
+    if supplied_coordinates:
+        intent["lat"], intent["lon"] = supplied_coordinates
+        intent["location_name"] = extract_inline_coordinate_location_name(user_query, location_name)
+        save_custom_location(
+            intent["location_name"],
+            intent["lat"], intent["lon"],
+            original_query=user_query,
+        )
+        return intent
+
     known_location = find_known_location_in_query(user_query)
     if known_location:
         lat, lon = KNOWN_LOCATIONS[known_location]
@@ -1095,16 +1127,7 @@ def normalize_intent(intent, user_query):
                 intent["lon"] = lon
                 break
         else:
-            if supplied_coordinates:
-                intent["lat"], intent["lon"] = supplied_coordinates
-                intent["location_name"] = location_name or "自訂座標"
-                # 用戶明確提供座標 → 存入自定義地點資料庫，下次直接解析
-                save_custom_location(
-                    intent["location_name"],
-                    intent["lat"], intent["lon"],
-                    original_query=user_query,
-                )
-            elif is_ambiguous_location(location_name, user_query):
+            if is_ambiguous_location(location_name, user_query):
                 location_hint = extract_location_hint(user_query) or location_name
                 intent["location_name"] = location_hint
                 raise LocationResolutionError(
