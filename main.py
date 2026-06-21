@@ -748,6 +748,15 @@ def get_moon_info(observer, query_dates):
         })
     return results
 
+def wind_kmh_to_beaufort(speed_kmh):
+    if speed_kmh is None or speed_kmh < 0:
+        return -1
+    thresholds = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
+    for level, upper in enumerate(thresholds):
+        if speed_kmh < upper:
+            return level
+    return 12
+
 
 def check_weather_multi(lat, lon, query_dates):
     if not query_dates:
@@ -759,13 +768,14 @@ def check_weather_multi(lat, lon, query_dates):
         return {
             "cloud_cover": -1, "humidity": -1, "temp_c": -1,
             "dew_point_c": -1, "dew_risk": False, "good_weather": False,
-            "visibility_km": -1, "data_status": "missing",
+            "visibility_km": -1, "wind_speed_kmh": -1, "wind_beaufort": -1,
+            "data_status": "missing",
             "data_source": "Open-Meteo", "missing_reason": reason,
         }
     if not valid:
         return {d: weather_missing("查詢日期超出 Open-Meteo 預報範圍 15 天") for d in query_dates}
     url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
-           f"&hourly=cloud_cover,visibility,relative_humidity_2m,temperature_2m,dew_point_2m"
+           f"&hourly=cloud_cover,visibility,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m"
            f"&start_date={min(valid).isoformat()}&end_date={max(valid).isoformat()}"
            f"&timezone=Asia%2FTaipei")
     try:
@@ -785,6 +795,7 @@ def check_weather_multi(lat, lon, query_dates):
             "temp_c":      data["temperature_2m"][i],
             "dew_point_c": data["dew_point_2m"][i],
             "visibility":  data["visibility"][i],
+            "wind_speed":  data.get("wind_speed_10m", [-1] * len(data["time"]))[i],
         }
     daily = {}
     for d in query_dates:
@@ -803,12 +814,15 @@ def check_weather_multi(lat, lon, query_dates):
             at = round(sum(x["temp_c"]      for x in night) / len(night), 1)
             ad = round(sum(x["dew_point_c"] for x in night) / len(night), 1)
             av = round(sum(x["visibility"]  for x in night) / len(night) / 1000, 1)
+            max_wind = round(max(x.get("wind_speed", -1) for x in night), 1)
             daily[d] = {
                 "cloud_cover": ac, "humidity": ah,
                 "temp_c": at, "dew_point_c": ad,
                 "dew_risk":       (at - ad) < 1.5,
                 "good_weather":   ac <= 40,
                 "visibility_km":  av,
+                "wind_speed_kmh": max_wind,
+                "wind_beaufort":  wind_kmh_to_beaufort(max_wind),
                 "data_status":    "ok",
                 "data_source":    "Open-Meteo",
                 "missing_reason": "",
@@ -1318,6 +1332,20 @@ def find_unmatched_targets(target_names, matched_targets):
             unmatched.append(name)
     return unmatched
 
+def determine_wind_profile(intent, matched_targets):
+    if intent.get("wind_profile") in ("milky_way", "deep_sky"):
+        return intent["wind_profile"]
+    requested_targets = intent.get("targets", [])
+    if any("深空" in t or "星雲" in t or "星系" in t for t in requested_targets):
+        return "deep_sky"
+    if not requested_targets:
+        return "milky_way"
+    if any(t.get("type") == "galaxy" or "銀河" in t.get("name", "") for t in matched_targets):
+        return "milky_way"
+    if any(t.get("type") in ("nebula", "comet") for t in matched_targets):
+        return "deep_sky"
+    return "milky_way"
+
 def summarize_data_quality(intent, query_dates, weather, seeing_data, matched_targets, unmatched_targets):
     weather_missing = [
         {
@@ -1445,6 +1473,7 @@ def run_query(user_query, prefetched_intent=None):
     dark_windows_by_date = {m["date"]: m["dark_windows"] for m in moon_info}
     matched_targets = match_targets(intent.get("targets", []))
     unmatched_targets = find_unmatched_targets(intent.get("targets", []), matched_targets)
+    wind_profile = determine_wind_profile(intent, matched_targets)
     is_galaxy_query = any(t.get("type") == "galaxy" for t in matched_targets)
     all_windows = []
     for target in matched_targets:
@@ -1468,6 +1497,8 @@ def run_query(user_query, prefetched_intent=None):
             "dew_risk":       wx.get("dew_risk",      False),
             "good_weather":   wx.get("good_weather",  False),
             "visibility_km":  wx.get("visibility_km", -1),
+            "wind_speed_kmh": wx.get("wind_speed_kmh", -1),
+            "wind_beaufort":  wx.get("wind_beaufort", -1),
             "seeing":         sd.get("seeing",        -1),
             "transparency":   sd.get("transparency",  -1),
         })
@@ -1500,6 +1531,7 @@ def run_query(user_query, prefetched_intent=None):
             m,
             seeing_data.get(d, {}),
             wins_for_date,
+            wind_profile,
         )
 
     return {
@@ -1522,12 +1554,12 @@ def run_query(user_query, prefetched_intent=None):
 
 # ── 出勤信心指數（CCI） ────────────────────────────────────────
 
-def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date):
+def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date, wind_profile="milky_way"):
     """每晚出勤信心指數（0–100）。純 Python 計算，不依賴 LLM。"""
     breakdown = {}
     completeness_flags = []
 
-    # 1. 雲量 (35%)
+    # 1. 雲量 (30%)
     weather_ok = weather_day.get("data_status") == "ok"
     cloud = weather_day.get("cloud_cover", -1)
     if not weather_ok or cloud < 0:
@@ -1538,9 +1570,9 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif cloud <= 60:  cloud_score, cloud_raw = 40,  f"雲量 {cloud}%"
     elif cloud <= 80:  cloud_score, cloud_raw = 15,  f"雲量 {cloud}%"
     else:              cloud_score, cloud_raw = 0,   f"雲量 {cloud}%"
-    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": 0.35}
+    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": 0.30}
 
-    # 2. 有效暗空窗口 (25%)
+    # 2. 有效暗空窗口 (22%)
     dark_wins = moon_info_day.get("dark_windows", [])
     if not dark_wins:
         dark_score, dark_raw = 0, "無有效暗空窗口"
@@ -1554,9 +1586,9 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
         elif total_min >= 60:  dark_score = 35
         elif total_min >= 30:  dark_score = 15
         else:                  dark_score = 5
-    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": 0.25}
+    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": 0.22}
 
-    # 3. 視寧度 (15%)  7Timer: 1=最佳, 8=最差
+    # 3. 視寧度 (13%)  7Timer: 1=最佳, 8=最差
     seeing_ok = seeing_day.get("data_status") == "ok"
     seeing = seeing_day.get("seeing", -1)
     if not seeing_ok or seeing <= 0:
@@ -1567,9 +1599,9 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif seeing <= 4: seeing_score, seeing_raw = 50,  f"視寧度 {seeing}/8（中）"
     elif seeing <= 5: seeing_score, seeing_raw = 25,  f"視寧度 {seeing}/8（差）"
     else:             seeing_score, seeing_raw = 0,   f"視寧度 {seeing}/8（很差）"
-    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": 0.15}
+    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": 0.13}
 
-    # 4. 大氣透明度 (10%)  7Timer: 1=最佳, 8=最差
+    # 4. 大氣透明度 (8%)  7Timer: 1=最佳, 8=最差
     transp = seeing_day.get("transparency", -1)
     if not seeing_ok or transp <= 0:
         transp_score, transp_raw = 50, "透明度資料缺失"
@@ -1578,7 +1610,7 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif transp <= 4: transp_score, transp_raw = 50,  f"透明度 {transp}/8（中）"
     elif transp <= 5: transp_score, transp_raw = 25,  f"透明度 {transp}/8（差）"
     else:             transp_score, transp_raw = 0,   f"透明度 {transp}/8（很差）"
-    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": 0.10}
+    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": 0.08}
 
     # 5. 目標天體可見性 (10%)
     in_dark = any(w.get("in_dark_window", False) for w in windows_for_date)
@@ -1603,13 +1635,31 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
             else:             dew_score, dew_raw = 0,   f"T−Td={diff:.1f}°C（高風險）"
     breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": 0.05}
 
+    # 7. 風速穩定性 (12%)  銀河最高容忍 3 級風，深空最高容忍 2 級風
+    wind_limit = 2 if wind_profile == "deep_sky" else 3
+    wind_kmh = weather_day.get("wind_speed_kmh", -1)
+    wind_bft = weather_day.get("wind_beaufort", -1)
+    if not weather_ok or wind_kmh < 0 or wind_bft < 0:
+        wind_score, wind_raw = 50, "風速資料缺失"
+        completeness_flags.append("wind_missing")
+    else:
+        wind_raw = f"最大風速 {wind_kmh} km/h（{wind_bft}級風，上限 {wind_limit}級）"
+        if wind_bft <= max(wind_limit - 1, 0):
+            wind_score = 100
+        elif wind_bft == wind_limit:
+            wind_score = 65
+        else:
+            wind_score = 0
+    breakdown["wind"] = {"score": wind_score, "raw": wind_raw, "weight": 0.12}
+
     score = round(
-        cloud_score  * 0.35 +
-        dark_score   * 0.25 +
-        seeing_score * 0.15 +
-        transp_score * 0.10 +
+        cloud_score  * 0.30 +
+        dark_score   * 0.22 +
+        seeing_score * 0.13 +
+        transp_score * 0.08 +
         target_score * 0.10 +
-        dew_score    * 0.05
+        dew_score    * 0.05 +
+        wind_score   * 0.12
     )
 
     if "weather_missing" in completeness_flags and "seeing_missing" in completeness_flags:
@@ -1679,28 +1729,78 @@ def extract_best_location_targets(text):
 def build_best_location_intent(text):
     date_start, date_end = parse_best_location_dates(text)
     targets = extract_best_location_targets(text)
+    wind_profile = "deep_sky" if any(k in text for k in ["深空", "星雲", "星系"]) else "milky_way"
+    region_scope = extract_region_scope(text)
     return {
         "query_type": "A" if targets else "B",
         "compare_mode": False,
-        "location_name": "全台 approved 地點排名",
+        "location_name": f"{region_scope or '全台'}地點排名",
         "lat": None,
         "lon": None,
         "date_start": date_start.isoformat(),
         "date_end": date_end.isoformat(),
         "targets": targets,
         "extra_notes": "best_location_ranking",
+        "region_scope": region_scope,
+        "wind_profile": wind_profile,
     }
 
 def dark_window_minutes(moon_info_day):
     return sum((de - ds).seconds // 60 for ds, de in moon_info_day.get("dark_windows", []))
 
+def extract_region_scope(text):
+    if any(k in text for k in ["離島", "外島", "澎湖", "金門", "馬祖", "綠島", "蘭嶼"]):
+        return "離島"
+    for scope in ["北部", "中部", "南部", "東部"]:
+        if scope in text:
+            return scope
+    if any(k in text for k in ["北台灣", "北臺灣"]):
+        return "北部"
+    if any(k in text for k in ["中台灣", "中臺灣"]):
+        return "中部"
+    if any(k in text for k in ["南台灣", "南臺灣"]):
+        return "南部"
+    if any(k in text for k in ["東台灣", "東臺灣"]):
+        return "東部"
+    return ""
+
+REGION_SCOPE_COUNTIES = {
+    "北部": ["台北", "臺北", "新北", "基隆", "桃園", "新竹", "苗栗", "宜蘭"],
+    "中部": ["台中", "臺中", "彰化", "南投", "雲林"],
+    "南部": ["嘉義", "台南", "臺南", "高雄", "屏東"],
+    "東部": ["花蓮", "台東", "臺東", "宜蘭"],
+    "離島": ["澎湖", "金門", "連江", "馬祖", "綠島", "蘭嶼", "七美", "西嶼", "湖西", "莒光", "北竿"],
+}
+
+def infer_region_scope_from_coordinates(lat, lon):
+    if lon < 119.8 or lat > 25.6 or (lon > 121.8 and lat < 23.5):
+        return "離島"
+    if lon >= 121.0 and lat < 24.9:
+        return "東部"
+    if lat >= 24.3:
+        return "北部"
+    if lat >= 23.5:
+        return "中部"
+    return "南部"
+
+def location_matches_region_scope(item, region_scope):
+    if not region_scope:
+        return True
+    region = str(item.get("region", ""))
+    if any(keyword in region for keyword in REGION_SCOPE_COUNTIES.get(region_scope, [])):
+        return True
+    try:
+        return infer_region_scope_from_coordinates(item["lat"], item["lon"]) == region_scope
+    except Exception:
+        return False
+
 def is_ranking_location(item):
     return item.get("review_status") == "approved" or item.get("source") == "user-provided"
 
-def ranking_location_items():
+def ranking_location_items(region_scope=""):
     return [
         (name, item) for name, item in LOCATION_DATA.items()
-        if is_ranking_location(item)
+        if is_ranking_location(item) and location_matches_region_scope(item, region_scope)
     ]
 
 def ranking_location_scope_counts(items):
@@ -1711,7 +1811,7 @@ def ranking_location_scope_counts(items):
         "approved": len(items) - user_count,
     }
 
-def rank_location_candidate(name, item, query_dates, matched_targets):
+def rank_location_candidate(name, item, query_dates, matched_targets, wind_profile):
     try:
         lat = item["lat"]
         lon = item["lon"]
@@ -1733,6 +1833,7 @@ def rank_location_candidate(name, item, query_dates, matched_targets):
                 m,
                 {"data_status": "missing", "seeing": -1, "transparency": -1},
                 wins_for_date,
+                wind_profile,
             )
             wx = weather.get(d, {})
             row = {
@@ -1746,6 +1847,8 @@ def rank_location_candidate(name, item, query_dates, matched_targets):
                 "cloud_cover": wx.get("cloud_cover", -1),
                 "humidity": wx.get("humidity", -1),
                 "visibility_km": wx.get("visibility_km", -1),
+                "wind_speed_kmh": wx.get("wind_speed_kmh", -1),
+                "wind_beaufort": wx.get("wind_beaufort", -1),
                 "dew_risk": wx.get("dew_risk", False),
                 "dark_minutes": dark_window_minutes(m),
                 "target_visible": bool(wins_for_date),
@@ -1758,16 +1861,17 @@ def rank_location_candidate(name, item, query_dates, matched_targets):
         print(f"[最佳地點排名錯誤] {name}: {type(e).__name__}: {e}", flush=True)
         return None
 
-def run_best_location_ranking(base_intent, limit=5):
+def run_best_location_ranking(base_intent, limit=6):
     date_start = date.fromisoformat(base_intent["date_start"])
     date_end = date.fromisoformat(base_intent["date_end"])
     query_dates = [date_start + timedelta(days=i) for i in range((date_end - date_start).days + 1)]
     matched_targets = match_targets(base_intent.get("targets", []))
+    wind_profile = determine_wind_profile(base_intent, matched_targets)
     candidates = []
-    location_items = ranking_location_items()
+    location_items = ranking_location_items(base_intent.get("region_scope", ""))
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = [
-            pool.submit(rank_location_candidate, name, item, query_dates, matched_targets)
+            pool.submit(rank_location_candidate, name, item, query_dates, matched_targets, wind_profile)
             for name, item in location_items
         ]
         for future in futures:
@@ -1790,6 +1894,7 @@ def run_best_location_ranking(base_intent, limit=5):
         "ranked": candidates[:limit],
         "candidate_count": len(candidates),
         "scope_counts": ranking_location_scope_counts(location_items),
+        "wind_profile": wind_profile,
     }
 
 def format_duration_minutes(total_min):
@@ -1813,6 +1918,7 @@ def generate_best_location_reply(ranking):
         "【最佳地點排行】",
         f"日期：{date_text}",
         f"題材：{target_text}",
+        f"區域：{intent.get('region_scope') or '全區'}",
         (
             f"資料範圍：{ranking['scope_counts']['total']} 個地點"
             f"（production approved {ranking['scope_counts']['approved']}、"
@@ -1824,12 +1930,13 @@ def generate_best_location_reply(ranking):
         icon = re.match(r"^\S+", row["label"]).group()
         cloud = f"{row['cloud_cover']}%" if row["cloud_cover"] >= 0 else "N/A"
         vis = f"{row['visibility_km']}km" if row["visibility_km"] >= 0 else "N/A"
+        wind = f"{row['wind_speed_kmh']}km/h・{row['wind_beaufort']}級" if row["wind_speed_kmh"] >= 0 else "N/A"
         dew = "結露風險" if row["dew_risk"] else "結露低"
         visible = "目標可見" if row["target_visible"] else "目標窗口弱"
         lines.append(
             f"{idx}. {row['name']}（{row['region']}）{icon} {row['score']}%｜"
             f"{row['date'].strftime('%m/%d')}｜雲量 {cloud}・暗空 {format_duration_minutes(row['dark_minutes'])}・"
-            f"能見度 {vis}・{dew}・{visible}"
+            f"風 {wind}・能見度 {vis}・{dew}・{visible}"
         )
     best = ranked[0]
     if best["score"] < 40:
@@ -1842,7 +1949,8 @@ def generate_best_location_reply(ranking):
             "",
             f"➡️ 最佳：{best['name']}，信心度 {best['score']}%。出發前仍建議確認即時雲圖與現地道路狀況。"
         ])
-    lines.append("註：全台排名為快速 CCI，視寧度/透明度暫以中性值處理；精查請再查單一地點。")
+    wind_note = "銀河容忍上限 3 級風" if ranking.get("wind_profile") == "milky_way" else "深空容忍上限 2 級風"
+    lines.append(f"註：排名為快速 CCI（{wind_note}），視寧度/透明度暫以中性值處理；精查請再查單一地點。")
     return "\n".join(lines)
 
 
@@ -1879,6 +1987,7 @@ def generate_reply(result):
         "溫度":    f"{w['temp_c']}°C"     if w['temp_c'] >= -50    else "N/A",
         "結露風險": w["dew_risk"],
         "能見度":  f"{w['visibility_km']} km" if w.get('visibility_km', -1) >= 0 else "N/A",
+        "風速":    f"{w['wind_speed_kmh']} km/h（{w['wind_beaufort']}級風）" if w.get('wind_speed_kmh', -1) >= 0 else "N/A",
         "視寧度":  f"{w['seeing']}/8（1最佳）"       if w.get('seeing', -1) > 0 else "N/A",
         "大氣透明度": f"{w['transparency']}/8（1最佳）" if w.get('transparency', -1) > 0 else "N/A",
     } for w in windows_for_llm], ensure_ascii=False, indent=2)
@@ -2032,6 +2141,7 @@ def generate_reply(result):
 ''' if is_galaxy_query else ''}【氣象分析】
   - 雲量：夜間平均 X%
   - 能見度：平均 X km
+  - 風速：最大風速與蒲福風級；銀河最高容忍 3 級風，深空最高容忍 2 級風
   - 結露風險：溫度/露點差，是否需要加熱帶
   - 若有視寧度與透明度（7Timer，1=最佳 8=最差），簡要評估對星點清晰度的影響
 
@@ -2058,6 +2168,7 @@ def generate_reply(result):
         "transparency": "透明度",
         "target":       "目標可見性",
         "dew":          "結露風險",
+        "wind":         "風速",
     }
     for m in moon_info:
         d = m["date"]
@@ -2076,6 +2187,7 @@ def generate_reply(result):
             "透明度": bd.get("transparency", {}).get("raw", "N/A"),
             "目標可見性": bd.get("target", {}).get("raw", "N/A"),
             "結露風險": bd.get("dew", {}).get("raw", "N/A"),
+            "風速": bd.get("wind", {}).get("raw", "N/A"),
             "資料完整性": cci.get("completeness", "unknown"),
         })
         if cci["score"] < 40:
