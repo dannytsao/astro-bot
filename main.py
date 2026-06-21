@@ -1628,6 +1628,202 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     return {"score": score, "label": label, "breakdown": breakdown, "completeness": completeness}
 
 
+# ── 全台最佳地點排名（Phase 3A #4） ───────────────────────────
+
+def is_best_location_query(text):
+    if any(sep in text for sep in ["vs", "VS", "Vs", "還是", "比較", "對比"]):
+        return False
+    place_question = any(k in text for k in ["哪裡", "哪邊", "哪個地點", "哪個景點", "去哪", "去哪裡", "最佳地點"])
+    ranking_intent = any(k in text for k in ["最好", "最佳", "推薦", "適合", "值得"])
+    return place_question and (ranking_intent or "拍" in text)
+
+def parse_best_location_dates(text):
+    today_tst = datetime.now(timezone(timedelta(hours=8))).date()
+    if "後天" in text:
+        d = today_tst + timedelta(days=2)
+        return d, d
+    if "明天" in text:
+        d = today_tst + timedelta(days=1)
+        return d, d
+    if "週末" in text or "周末" in text:
+        weekday = today_tst.weekday()  # Mon=0, Sat=5, Sun=6
+        if weekday == 6:
+            return today_tst, today_tst
+        days_until_sat = 5 - weekday
+        if days_until_sat < 0:
+            days_until_sat += 7
+        sat = today_tst + timedelta(days=days_until_sat)
+        return sat, sat + timedelta(days=1)
+    return today_tst, today_tst
+
+def extract_best_location_targets(text):
+    targets = []
+    if "銀河" in text:
+        targets.append("銀河核心")
+    for target in TARGET_LIBRARY:
+        if target["name"] in text and target["name"] not in targets:
+            targets.append(target["name"])
+    for alias, canonical in [
+        ("M42", "獵戶座大星雲 M42"),
+        ("M8", "礁湖星雲 M8"),
+        ("M16", "鷹星雲 M16"),
+        ("M31", "仙女座星系 M31"),
+        ("NGC2244", "玫瑰星雲 NGC2244"),
+        ("NGC2174", "猴頭星雲 NGC2174"),
+        ("NGC6302", "昆蟲星雲 NGC6302"),
+    ]:
+        if alias.lower() in text.lower() and canonical not in targets:
+            targets.append(canonical)
+    return targets
+
+def build_best_location_intent(text):
+    date_start, date_end = parse_best_location_dates(text)
+    targets = extract_best_location_targets(text)
+    return {
+        "query_type": "A" if targets else "B",
+        "compare_mode": False,
+        "location_name": "全台 approved 地點排名",
+        "lat": None,
+        "lon": None,
+        "date_start": date_start.isoformat(),
+        "date_end": date_end.isoformat(),
+        "targets": targets,
+        "extra_notes": "best_location_ranking",
+    }
+
+def dark_window_minutes(moon_info_day):
+    return sum((de - ds).seconds // 60 for ds, de in moon_info_day.get("dark_windows", []))
+
+def rank_location_candidate(name, item, query_dates, matched_targets):
+    try:
+        lat = item["lat"]
+        lon = item["lon"]
+        observer = wgs84.latlon(lat, lon)
+        moon_info = get_moon_info(observer, query_dates)
+        dark_windows_by_date = {m["date"]: m["dark_windows"] for m in moon_info}
+        all_windows = []
+        for target in matched_targets:
+            all_windows.extend(
+                compute_target_windows(observer, target, query_dates, dark_windows_by_date)
+            )
+        weather = check_weather_multi(lat, lon, query_dates)
+        best = None
+        for m in moon_info:
+            d = m["date"]
+            wins_for_date = [w for w in all_windows if w["datetime_tst"].date() == d]
+            cci = compute_cci_for_date(
+                weather.get(d, {}),
+                m,
+                {"data_status": "missing", "seeing": -1, "transparency": -1},
+                wins_for_date,
+            )
+            wx = weather.get(d, {})
+            row = {
+                "name": name,
+                "region": item.get("region", ""),
+                "lat": lat,
+                "lon": lon,
+                "date": d,
+                "score": cci["score"],
+                "label": cci["label"],
+                "cloud_cover": wx.get("cloud_cover", -1),
+                "humidity": wx.get("humidity", -1),
+                "visibility_km": wx.get("visibility_km", -1),
+                "dew_risk": wx.get("dew_risk", False),
+                "dark_minutes": dark_window_minutes(m),
+                "target_visible": bool(wins_for_date),
+                "weather_status": wx.get("data_status", "missing"),
+            }
+            if best is None or (row["score"], row["dark_minutes"]) > (best["score"], best["dark_minutes"]):
+                best = row
+        return best
+    except Exception as e:
+        print(f"[最佳地點排名錯誤] {name}: {type(e).__name__}: {e}", flush=True)
+        return None
+
+def run_best_location_ranking(base_intent, limit=5):
+    date_start = date.fromisoformat(base_intent["date_start"])
+    date_end = date.fromisoformat(base_intent["date_end"])
+    query_dates = [date_start + timedelta(days=i) for i in range((date_end - date_start).days + 1)]
+    matched_targets = match_targets(base_intent.get("targets", []))
+    candidates = []
+    with ThreadPoolExecutor(max_workers=8) as pool:
+        futures = [
+            pool.submit(rank_location_candidate, name, item, query_dates, matched_targets)
+            for name, item in LOCATION_DATA.items()
+            if item.get("review_status") == "approved"
+        ]
+        for future in futures:
+            row = future.result()
+            if row:
+                candidates.append(row)
+    candidates.sort(
+        key=lambda r: (
+            r["score"],
+            1 if r.get("weather_status") == "ok" else 0,
+            r["dark_minutes"],
+            -1 * (r["cloud_cover"] if r["cloud_cover"] >= 0 else 999),
+        ),
+        reverse=True,
+    )
+    return {
+        "intent": base_intent,
+        "query_dates": query_dates,
+        "targets": [t["name"] for t in matched_targets],
+        "ranked": candidates[:limit],
+        "candidate_count": len(candidates),
+    }
+
+def format_duration_minutes(total_min):
+    h, m = divmod(max(total_min, 0), 60)
+    return f"{h}h{m:02d}m"
+
+def generate_best_location_reply(ranking):
+    intent = ranking["intent"]
+    ranked = ranking["ranked"]
+    target_text = "、".join(intent.get("targets") or []) or "開放探索"
+    date_text = intent["date_start"] if intent["date_start"] == intent["date_end"] else f"{intent['date_start']}～{intent['date_end']}"
+    if not ranked:
+        return (
+            "【最佳地點排行】\n"
+            f"日期：{date_text}\n"
+            f"題材：{target_text}\n\n"
+            "目前沒有足夠資料產生地點排名，建議改查單一地點或稍後再試。"
+        )
+
+    lines = [
+        "【最佳地點排行】",
+        f"日期：{date_text}",
+        f"題材：{target_text}",
+        f"資料範圍：{ranking['candidate_count']} 個 approved 地點",
+        "",
+    ]
+    for idx, row in enumerate(ranked, 1):
+        icon = re.match(r"^\S+", row["label"]).group()
+        cloud = f"{row['cloud_cover']}%" if row["cloud_cover"] >= 0 else "N/A"
+        vis = f"{row['visibility_km']}km" if row["visibility_km"] >= 0 else "N/A"
+        dew = "結露風險" if row["dew_risk"] else "結露低"
+        visible = "目標可見" if row["target_visible"] else "目標窗口弱"
+        lines.append(
+            f"{idx}. {row['name']}（{row['region']}）{icon} {row['score']}%｜"
+            f"{row['date'].strftime('%m/%d')}｜雲量 {cloud}・暗空 {format_duration_minutes(row['dark_minutes'])}・"
+            f"能見度 {vis}・{dew}・{visible}"
+        )
+    best = ranked[0]
+    if best["score"] < 40:
+        lines.extend([
+            "",
+            "➡️ 結論：全台條件都偏弱，不建議硬衝；可改期或改拍月景、城市夜景。"
+        ])
+    else:
+        lines.extend([
+            "",
+            f"➡️ 最佳：{best['name']}，信心度 {best['score']}%。出發前仍建議確認即時雲圖與現地道路狀況。"
+        ])
+    lines.append("註：全台排名為快速 CCI，視寧度/透明度暫以中性值處理；精查請再查單一地點。")
+    return "\n".join(lines)
+
+
 # ── 回覆生成 ───────────────────────────────────────────────────
 
 def _format_time(dt):
@@ -1998,6 +2194,47 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
     """
     username = get_display_name(user_id)
     try:
+        if is_best_location_query(text):
+            intent_for_check = build_best_location_intent(text)
+            scope = check_unsupported(text, intent_for_check)
+            if scope["has_unsupported"]:
+                labels = "、".join(scope["unsupported_labels"])
+                notice = (
+                    f"⚠️ 目前版本尚不支援：{labels}\n\n"
+                    f"很抱歉，這個查詢超出目前的功能範圍。\n"
+                    f"想把這個需求加入許願池，讓我們優先開發嗎？"
+                )
+                user_wish_text[user_id] = scope["wish_text"]
+                user_last_query[user_id] = text
+                safe_push_message(user_id, TextSendMessage(
+                    text=notice,
+                    quick_reply=make_unsupported_quick_reply()
+                ), "unsupported notice for best location")
+                mark_message_as_read(mark_as_read_token)
+                return
+
+            ranking = run_best_location_ranking(intent_for_check)
+            reply = generate_best_location_reply(ranking)
+            user_last_query[user_id] = text
+            log_query(username, user_id, text, intent_for_check, {
+                "policy": "best_location_ranking",
+                "location": {
+                    "status": "ranking",
+                    "candidate_count": ranking.get("candidate_count", 0),
+                },
+                "seeing": {
+                    "source": "7Timer",
+                    "status": "neutralized_for_fast_ranking",
+                },
+            })
+            safe_push_message(user_id, TextSendMessage(
+                text=reply,
+                quick_reply=make_feedback_quick_reply()
+            ), "best location ranking reply")
+            mark_message_as_read(mark_as_read_token)
+            print("[回覆] 最佳地點排名完成", flush=True)
+            return
+
         intent_for_check = normalize_intent(prefetched_intent, text) if prefetched_intent else parse_intent(text)
         scope = check_unsupported(text, intent_for_check)
 
