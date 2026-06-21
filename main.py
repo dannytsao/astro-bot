@@ -1587,14 +1587,31 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
     return normalize_intent(json.loads(text), user_query)
 
 
+_M_NUM_RE = re.compile(r'^m\d+$')
+
 def _target_matches(query_name: str, target: dict) -> bool:
-    """回傳 True 若 query_name 與 target 的名稱或任何 alias 匹配（雙向 substring）。"""
-    q = query_name.lower()
+    """回傳 True 若 query_name 與 target 的名稱或任何 alias 匹配。
+    規則：
+    - M 編號（如 m2、m20）使用數字邊界比對，避免 m2 誤中 m20。
+    - 其他文字使用雙向 substring 比對。
+    """
+    q = query_name.lower().strip()
     all_names = [target["name"]] + target.get("aliases", [])
     for n in all_names:
-        n_l = n.lower()
-        if q in n_l or n_l in q:
+        n_l = n.lower().strip()
+        if q == n_l:
             return True
+        if _M_NUM_RE.match(n_l):
+            # n_l 是純 M 編號：要求在 query 中出現且前後不接數字
+            if re.search(r'(?<!\d)' + re.escape(n_l) + r'(?!\d)', q):
+                return True
+        elif _M_NUM_RE.match(q):
+            # query 是純 M 編號：要求在 n_l 中出現且前後不接數字
+            if re.search(r'(?<!\d)' + re.escape(q) + r'(?!\d)', n_l):
+                return True
+        else:
+            if q in n_l or n_l in q:
+                return True
     return False
 
 def match_targets(target_names):
