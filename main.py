@@ -428,20 +428,38 @@ eph = load("de421.bsp")
 # ── 標的資料庫 ────────────────────────────────────────────────
 
 TARGET_LIBRARY = [
-    {"name":"銀河核心",          "ra_hours":17.761, "dec_degrees":-29.0,  "type":"galaxy",        "min_alt":15,"max_alt":60},
-    {"name":"獵戶座",            "ra_hours":84.05/15,"dec_degrees":-1.20,  "type":"constellation", "min_alt":10,"max_alt":50},
-    {"name":"天蠍座",            "ra_hours":16.49,  "dec_degrees":-26.43, "type":"constellation", "min_alt":10,"max_alt":50},
-    {"name":"獅子座",            "ra_hours":10.14,  "dec_degrees":11.97,  "type":"constellation", "min_alt":10,"max_alt":70},
-    {"name":"仙女座",            "ra_hours":0.712,  "dec_degrees":41.27,  "type":"constellation", "min_alt":10,"max_alt":80},
-    {"name":"南十字座",          "ra_hours":12.45,  "dec_degrees":-60.0,  "type":"constellation", "min_alt":5, "max_alt":30},
-    {"name":"獵戶座大星雲 M42",  "ra_hours":5.588,  "dec_degrees":-5.39,  "type":"nebula",        "min_alt":10,"max_alt":60},
-    {"name":"玫瑰星雲 NGC2244",  "ra_hours":6.532,  "dec_degrees":4.95,   "type":"nebula",        "min_alt":10,"max_alt":60},
-    {"name":"礁湖星雲 M8",       "ra_hours":18.063, "dec_degrees":-24.38, "type":"nebula",        "min_alt":10,"max_alt":50},
-    {"name":"鷹星雲 M16",        "ra_hours":18.313, "dec_degrees":-13.79, "type":"nebula",        "min_alt":10,"max_alt":60},
-    {"name":"猴頭星雲 NGC2174",  "ra_hours":6.092,  "dec_degrees":20.30,  "type":"nebula",        "min_alt":10,"max_alt":70},
-    {"name":"昆蟲星雲 NGC6302",  "ra_hours":17.225, "dec_degrees":-37.10, "type":"nebula",        "min_alt":8, "max_alt":40},
-    {"name":"仙女座星系 M31",    "ra_hours":0.712,  "dec_degrees":41.27,  "type":"nebula",        "min_alt":10,"max_alt":80},
-    {"name":"紫金山-ATLAS彗星",  "ra_hours":3.20,   "dec_degrees":15.0,   "type":"comet",         "min_alt":10,"max_alt":60},
+    # min_focal_mm: 建議最短焦距  tracking_required: no/optional/recommended/required  difficulty: 1-4
+    # aliases: LLM 可能回傳的別名，用於 match_targets 模糊匹配
+    {"name":"銀河核心",          "ra_hours":17.761,  "dec_degrees":-29.0,  "type":"galaxy",        "min_alt":15,"max_alt":60, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["銀河","milky way","milkyway","銀河系中心"]},
+    {"name":"獵戶座",            "ra_hours":84.05/15,"dec_degrees":-1.20,  "type":"constellation", "min_alt":10,"max_alt":50, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["orion","獵戶"]},
+    {"name":"天蠍座",            "ra_hours":16.49,   "dec_degrees":-26.43, "type":"constellation", "min_alt":10,"max_alt":50, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["scorpius","scorpio","天蠍"]},
+    {"name":"獅子座",            "ra_hours":10.14,   "dec_degrees":11.97,  "type":"constellation", "min_alt":10,"max_alt":70, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["leo","獅子"]},
+    {"name":"仙女座",            "ra_hours":0.712,   "dec_degrees":41.27,  "type":"constellation", "min_alt":10,"max_alt":80, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["andromeda","仙女"]},
+    {"name":"南十字座",          "ra_hours":12.45,   "dec_degrees":-60.0,  "type":"constellation", "min_alt":5, "max_alt":30, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["crux","southern cross","南十字","十字架","南十字星"]},
+    {"name":"獵戶座大星雲 M42",  "ra_hours":5.588,   "dec_degrees":-5.39,  "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":50,  "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m42","orion nebula","大星雲","獵戶星雲"]},
+    {"name":"玫瑰星雲 NGC2244",  "ra_hours":6.532,   "dec_degrees":4.95,   "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["ngc2244","rose nebula","ngc 2244","玫瑰"]},
+    {"name":"礁湖星雲 M8",       "ra_hours":18.063,  "dec_degrees":-24.38, "type":"nebula",        "min_alt":10,"max_alt":50, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m8","lagoon nebula","礁湖"]},
+    {"name":"鷹星雲 M16",        "ra_hours":18.313,  "dec_degrees":-13.79, "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m16","eagle nebula","鷹"]},
+    {"name":"猴頭星雲 NGC2174",  "ra_hours":6.092,   "dec_degrees":20.30,  "type":"nebula",        "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["ngc2174","monkey head","猴頭","ngc 2174"]},
+    {"name":"昆蟲星雲 NGC6302",  "ra_hours":17.225,  "dec_degrees":-37.10, "type":"nebula",        "min_alt":8, "max_alt":40, "min_focal_mm":500, "tracking_required":"required",    "difficulty":4,
+     "aliases":["ngc6302","bug nebula","butterfly nebula","昆蟲","蝴蝶星雲","ngc 6302"]},
+    {"name":"仙女座星系 M31",    "ra_hours":0.712,   "dec_degrees":41.27,  "type":"nebula",        "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"required",    "difficulty":2,
+     "aliases":["m31","andromeda galaxy","仙女星系","仙女座大星系","仙女大星雲"]},
+    {"name":"鬼宿星團 M44",      "ra_hours":8.673,   "dec_degrees":19.98,  "type":"cluster",       "min_alt":10,"max_alt":70, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m44","beehive","praesepe","鬼宿星團","蜂巢星團","積尸氣","巨蟹座星團"]},
+    {"name":"紫金山-ATLAS彗星",  "ra_hours":3.20,    "dec_degrees":15.0,   "type":"comet",         "min_alt":10,"max_alt":60, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["atlas","紫金山","c/2023 a3"]},
 ]
 
 METEOR_SHOWERS = [
@@ -1308,15 +1326,24 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
     return normalize_intent(json.loads(text), user_query)
 
 
+def _target_matches(query_name: str, target: dict) -> bool:
+    """回傳 True 若 query_name 與 target 的名稱或任何 alias 匹配（雙向 substring）。"""
+    q = query_name.lower()
+    all_names = [target["name"]] + target.get("aliases", [])
+    for n in all_names:
+        n_l = n.lower()
+        if q in n_l or n_l in q:
+            return True
+    return False
+
 def match_targets(target_names):
     if not target_names:
         return TARGET_LIBRARY
     matched = []
     for name in target_names:
         for t in TARGET_LIBRARY:
-            if name.lower() in t["name"].lower() or t["name"].lower() in name.lower():
-                if t not in matched:
-                    matched.append(t)
+            if _target_matches(name, t) and t not in matched:
+                matched.append(t)
     return matched
 
 def find_unmatched_targets(target_names, matched_targets):
@@ -1324,10 +1351,7 @@ def find_unmatched_targets(target_names, matched_targets):
         return []
     unmatched = []
     for name in target_names:
-        found = any(
-            name.lower() in t["name"].lower() or t["name"].lower() in name.lower()
-            for t in matched_targets
-        )
+        found = any(_target_matches(name, t) for t in matched_targets)
         if not found:
             unmatched.append(name)
     return unmatched
@@ -1342,9 +1366,32 @@ def determine_wind_profile(intent, matched_targets):
         return "milky_way"
     if any(t.get("type") == "galaxy" or "銀河" in t.get("name", "") for t in matched_targets):
         return "milky_way"
-    if any(t.get("type") in ("nebula", "comet") for t in matched_targets):
+    if any(t.get("type") in ("nebula", "comet", "cluster") for t in matched_targets):
         return "deep_sky"
     return "milky_way"
+
+def determine_cci_profile(intent, matched_targets, showers, unsupported_info=None):
+    """決定 CCI 計算使用哪個題材 profile。
+    Returns: "default" | "meteor" | "moonscape" | "lunar_eclipse" | "comet_layer1"
+    """
+    if unsupported_info is None:
+        unsupported_info = {}
+    # 月蝕：明確提到月蝕關鍵字，且本系統支援第一層天況 CCI
+    if unsupported_info.get("has_lunar_eclipse"):
+        return "lunar_eclipse"
+    # 月景：明確提到月景攝影
+    if unsupported_info.get("has_moonscape"):
+        return "moonscape"
+    # 流星雨：查詢包含流星雨關鍵字且當期有流星雨活動
+    targets_text = " ".join(intent.get("targets", []))
+    raw_query = intent.get("raw_query", "")
+    all_text = (targets_text + " " + raw_query).lower()
+    if showers and any(kw in all_text for kw in ["流星雨", "流星", "meteor"]):
+        return "meteor"
+    # 彗星第一層：matched_targets 中有 comet 類型
+    if any(t.get("type") == "comet" for t in matched_targets):
+        return "comet_layer1"
+    return "default"
 
 def summarize_data_quality(intent, query_dates, weather, seeing_data, matched_targets, unmatched_targets):
     weather_missing = [
@@ -1422,16 +1469,10 @@ UNSUPPORTED_KEYWORDS = {
     "衝":   ("planet", "行星位置"),
     "合月": ("planet", "行星位置"),
     "凌日": ("planet", "行星位置"),
-    "日食": ("eclipse", "日食／月食預測"),
-    "月食": ("eclipse", "日食／月食預測"),
-    "日蝕": ("eclipse", "日食／月食預測"),
-    "月蝕": ("eclipse", "日食／月食預測"),
-    "全食": ("eclipse", "日食／月食預測"),
-    "偏食": ("eclipse", "日食／月食預測"),
-    "環食": ("eclipse", "日食／月食預測"),
-    "食既": ("eclipse", "日食／月食預測"),
-    "生光": ("eclipse", "日食／月食預測"),
-    "eclipse": ("eclipse", "日食／月食預測"),
+    "日食": ("solar_eclipse", "日食預測"),
+    "日蝕": ("solar_eclipse", "日食預測"),
+    "凌日": ("solar_eclipse", "日食預測"),
+    # 月蝕/月食已移出 hard-block，改為 cci_profile="lunar_eclipse" + 軟性提示
 }
 
 COMET_KEYWORDS = ["彗星", "comet", "atlas", "紫金山"]
@@ -1454,11 +1495,17 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
         if label not in unsupported_labels:
             unsupported_labels.append(label)
     has_comet_warning = any(kw in all_text for kw in COMET_KEYWORDS) and not unknown_comet_match
+    LUNAR_ECLIPSE_KEYWORDS = ["月蝕", "月食", "全食", "偏食", "環食", "食既", "生光", "lunar eclipse"]
+    has_lunar_eclipse = any(kw in all_text for kw in LUNAR_ECLIPSE_KEYWORDS)
+    MOONSCAPE_KEYWORDS = ["月景", "月光攝影", "月色攝影", "moonscape"]
+    has_moonscape = any(kw in all_text for kw in MOONSCAPE_KEYWORDS)
     return {
-        "has_unsupported":    len(unsupported_labels) > 0,
-        "has_comet_warning":  has_comet_warning,
-        "unsupported_labels": unsupported_labels,
-        "wish_text":          f"希望支援：{'、'.join(unsupported_labels)}（原始查詢：{user_query}）",
+        "has_unsupported":       len(unsupported_labels) > 0,
+        "has_comet_warning":     has_comet_warning,
+        "has_lunar_eclipse":     has_lunar_eclipse,
+        "has_moonscape":         has_moonscape,
+        "unsupported_labels":    unsupported_labels,
+        "wish_text":             f"希望支援：{'、'.join(unsupported_labels)}（原始查詢：{user_query}）",
     }
 
 
@@ -1481,6 +1528,8 @@ def run_query(user_query, prefetched_intent=None):
             compute_target_windows(observer, target, query_dates, dark_windows_by_date)
         )
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
+    unsupported_info = check_unsupported(user_query, intent)
+    cci_profile = determine_cci_profile(intent, matched_targets, showers, unsupported_info)
     weather     = check_weather_multi(intent["lat"], intent["lon"], query_dates)
     seeing_data = get_7timer_seeing(intent["lat"], intent["lon"], query_dates)
     data_quality = summarize_data_quality(
@@ -1523,6 +1572,9 @@ def run_query(user_query, prefetched_intent=None):
     avg_transparency = round(sum(transp_values) / len(transp_values), 1) if transp_values else -1
 
     cci_by_date = {}
+    showers_by_date = {}
+    for d in query_dates:
+        showers_by_date[d] = check_meteor_shower(d)
     for m in moon_info:
         d = m["date"]
         wins_for_date = [w for w in all_windows if w["datetime_tst"].date() == d]
@@ -1532,6 +1584,8 @@ def run_query(user_query, prefetched_intent=None):
             seeing_data.get(d, {}),
             wins_for_date,
             wind_profile,
+            cci_profile=cci_profile,
+            extra_data={"showers": showers_by_date.get(d, [])},
         )
 
     return {
@@ -1540,6 +1594,8 @@ def run_query(user_query, prefetched_intent=None):
         "all_windows":  all_windows,
         "moon_info":   moon_info,
         "showers":     showers,
+        "cci_profile": cci_profile,
+        "unsupported_info": unsupported_info,
         "mw_composition_by_date":    mw_composition_by_date,
         "is_galaxy_query":           is_galaxy_query,
         "all_windows_out_of_range":  all_windows_out_of_range,
@@ -1549,17 +1605,49 @@ def run_query(user_query, prefetched_intent=None):
         "avg_transparency":          avg_transparency,
         "data_quality":              data_quality,
         "cci_by_date":               cci_by_date,
+        "matched_targets":           matched_targets,
     }
 
 
 # ── 出勤信心指數（CCI） ────────────────────────────────────────
 
-def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date, wind_profile="milky_way"):
-    """每晚出勤信心指數（0–100）。純 Python 計算，不依賴 LLM。"""
+def _moon_illumination(moon_phase_pct):
+    """從 moon_phase_pct（0–100）估算月面照度比例（0–1）。
+    moon_phase_pct=0/100 → 新月 (~0%)；moon_phase_pct=50 → 滿月 (~100%)。
+    """
+    import math
+    phase_angle_deg = moon_phase_pct / 100.0 * 360.0
+    return (1.0 - math.cos(math.radians(phase_angle_deg))) / 2.0
+
+def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date, wind_profile="milky_way",
+                         cci_profile="default", extra_data=None):
+    """每晚出勤信心指數（0–100）。純 Python 計算，不依賴 LLM。
+    cci_profile: "default" | "meteor" | "moonscape" | "lunar_eclipse" | "comet_layer1"
+    extra_data:  {"showers": [...]}  供 meteor profile 讀取 ZHR
+    """
+    if extra_data is None:
+        extra_data = {}
     breakdown = {}
     completeness_flags = []
+    profile_notes = []  # 附加說明給 LLM
 
-    # 1. 雲量 (30%)
+    # ── 各 profile 權重定義 ───────────────────────────────────────
+    if cci_profile == "meteor":
+        # 流星雨：雲量最重要；月亮亮度是關鍵負因子（放入 target）；視寧度次要；無需追蹤故風速寬鬆
+        W = {"cloud":0.35,"dark_window":0.08,"seeing":0.05,"transparency":0.10,"target":0.27,"dew":0.05,"wind":0.10}
+    elif cci_profile == "moonscape":
+        # 月景：月光是主角；暗空窗口反轉；透明度更重要；視寧度次要
+        W = {"cloud":0.35,"dark_window":0.05,"seeing":0.08,"transparency":0.15,"target":0.27,"dew":0.05,"wind":0.05}
+    elif cci_profile == "lunar_eclipse":
+        # 月蝕：不需要暗空；透明度最關鍵；月亮仰角（月在天上）是目標可見性
+        W = {"cloud":0.35,"dark_window":0.03,"seeing":0.10,"transparency":0.17,"target":0.25,"dew":0.05,"wind":0.05}
+    elif cci_profile == "comet_layer1":
+        # 彗星第一層：同深空，但 target 固定中性（無準確座標）
+        W = {"cloud":0.30,"dark_window":0.22,"seeing":0.13,"transparency":0.08,"target":0.10,"dew":0.05,"wind":0.12}
+    else:  # default
+        W = {"cloud":0.30,"dark_window":0.22,"seeing":0.13,"transparency":0.08,"target":0.10,"dew":0.05,"wind":0.12}
+
+    # 1. 雲量
     weather_ok = weather_day.get("data_status") == "ok"
     cloud = weather_day.get("cloud_cover", -1)
     if not weather_ok or cloud < 0:
@@ -1570,25 +1658,55 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif cloud <= 60:  cloud_score, cloud_raw = 40,  f"雲量 {cloud}%"
     elif cloud <= 80:  cloud_score, cloud_raw = 15,  f"雲量 {cloud}%"
     else:              cloud_score, cloud_raw = 0,   f"雲量 {cloud}%"
-    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": 0.30}
+    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": W["cloud"]}
 
-    # 2. 有效暗空窗口 (22%)
+    # 2. 有效暗空窗口 / 月光亮度（依 profile 調整語意）
+    moon_pct  = moon_info_day.get("moon_phase_pct", 50)
+    moon_illum = _moon_illumination(moon_pct)  # 0=新月, 1=滿月
     dark_wins = moon_info_day.get("dark_windows", [])
-    if not dark_wins:
-        dark_score, dark_raw = 0, "無有效暗空窗口"
-    else:
-        total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
-        h, m = divmod(total_min, 60)
-        dark_raw = f"暗空 {h}h{m:02d}m" if total_min > 0 else "暗空窗口極短"
-        if total_min >= 300:   dark_score = 100
-        elif total_min >= 240: dark_score = 90
-        elif total_min >= 120: dark_score = 65
-        elif total_min >= 60:  dark_score = 35
-        elif total_min >= 30:  dark_score = 15
-        else:                  dark_score = 5
-    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": 0.22}
 
-    # 3. 視寧度 (13%)  7Timer: 1=最佳, 8=最差
+    if cci_profile == "moonscape":
+        # 月景：月光是主角，illumination 越高越好
+        if moon_illum >= 0.75:   dark_score, dark_raw = 100, f"月面照度 {round(moon_illum*100)}%（滿月期，絕佳月景）"
+        elif moon_illum >= 0.50: dark_score, dark_raw = 80,  f"月面照度 {round(moon_illum*100)}%（盈月期，良好）"
+        elif moon_illum >= 0.25: dark_score, dark_raw = 45,  f"月面照度 {round(moon_illum*100)}%（半月期，尚可）"
+        else:                    dark_score, dark_raw = 10,  f"月面照度 {round(moon_illum*100)}%（新月期，月景不佳）"
+        profile_notes.append("⚠️ 月景題材：月光強度為加分項，分析以月亮亮度為主，無暗空需求")
+    elif cci_profile == "lunar_eclipse":
+        # 月蝕：月亮需在天上（不需要暗空）；月蝕時月亮仰角是可見性
+        moon_above = moon_info_day.get("moon_above_all_night", False)
+        moon_below = moon_info_day.get("moon_below_all_night", False)
+        if moon_above:
+            dark_score, dark_raw = 90, "月亮整夜在天，月蝕可見"
+        elif moon_below:
+            dark_score, dark_raw = 0,  "月亮整夜低於地平，月蝕無法觀測"
+        elif dark_wins:
+            total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
+            moon_up_min = max(0, 480 - total_min)  # 估算月亮在天時間
+            dark_score = min(90, round(moon_up_min / 480 * 100))
+            dark_raw = f"月亮部分時段可見（估計 {moon_up_min} 分鐘）"
+        else:
+            dark_score, dark_raw = 50, "月亮出沒情況不明（中性）"
+        profile_notes.append("⚠️ 月蝕題材：本系統不計算月蝕時間，天況評估僅供參考；月蝕時間請查詢台北天文館或 Stellarium")
+    elif cci_profile in ("meteor", "default", "comet_layer1"):
+        # 深空/流星雨：暗空窗口長度評分（原始邏輯）
+        if not dark_wins:
+            dark_score, dark_raw = 0, "無有效暗空窗口"
+        else:
+            total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
+            h, m_min = divmod(total_min, 60)
+            dark_raw = f"暗空 {h}h{m_min:02d}m" if total_min > 0 else "暗空窗口極短"
+            if total_min >= 300:   dark_score = 100
+            elif total_min >= 240: dark_score = 90
+            elif total_min >= 120: dark_score = 65
+            elif total_min >= 60:  dark_score = 35
+            elif total_min >= 30:  dark_score = 15
+            else:                  dark_score = 5
+    else:
+        dark_score, dark_raw = 50, "暗空窗口資料不明（中性）"
+    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": W["dark_window"]}
+
+    # 3. 視寧度  7Timer: 1=最佳, 8=最差
     seeing_ok = seeing_day.get("data_status") == "ok"
     seeing = seeing_day.get("seeing", -1)
     if not seeing_ok or seeing <= 0:
@@ -1599,9 +1717,9 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif seeing <= 4: seeing_score, seeing_raw = 50,  f"視寧度 {seeing}/8（中）"
     elif seeing <= 5: seeing_score, seeing_raw = 25,  f"視寧度 {seeing}/8（差）"
     else:             seeing_score, seeing_raw = 0,   f"視寧度 {seeing}/8（很差）"
-    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": 0.13}
+    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": W["seeing"]}
 
-    # 4. 大氣透明度 (8%)  7Timer: 1=最佳, 8=最差
+    # 4. 大氣透明度  7Timer: 1=最佳, 8=最差
     transp = seeing_day.get("transparency", -1)
     if not seeing_ok or transp <= 0:
         transp_score, transp_raw = 50, "透明度資料缺失"
@@ -1610,17 +1728,59 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif transp <= 4: transp_score, transp_raw = 50,  f"透明度 {transp}/8（中）"
     elif transp <= 5: transp_score, transp_raw = 25,  f"透明度 {transp}/8（差）"
     else:             transp_score, transp_raw = 0,   f"透明度 {transp}/8（很差）"
-    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": 0.08}
+    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": W["transparency"]}
 
-    # 5. 目標天體可見性 (10%)
-    in_dark = any(w.get("in_dark_window", False) for w in windows_for_date)
-    has_win  = len(windows_for_date) > 0
-    if in_dark:   target_score, target_raw = 100, "暗空窗口內可見"
-    elif has_win: target_score, target_raw = 50,  "僅月光時段可見"
-    else:         target_score, target_raw = 0,   "目標不可見"
-    breakdown["target"] = {"score": target_score, "raw": target_raw, "weight": 0.10}
+    # 5. 目標天體可見性（依 profile 調整語意）
+    if cci_profile == "meteor":
+        # 流星雨：月面照度是最大干擾因子；ZHR 決定值得程度
+        if moon_illum <= 0.10:   target_score = 100
+        elif moon_illum <= 0.25: target_score = 80
+        elif moon_illum <= 0.50: target_score = 55
+        elif moon_illum <= 0.75: target_score = 25
+        else:                    target_score = 8
+        showers = extra_data.get("showers", [])
+        if showers:
+            peak = max(showers, key=lambda s: s["zenithal_hourly_rate"])
+            zhr  = peak["zenithal_hourly_rate"]
+            days = abs(peak.get("days_to_peak", 3))
+            zhr_label = f"ZHR {zhr}"
+            if zhr >= 100 and days == 0:   target_score = min(100, target_score + 20)
+            elif zhr >= 100 and days <= 1: target_score = min(100, target_score + 10)
+            elif zhr >= 50:                target_score = min(100, target_score + 5)
+            target_raw = f"月面照度 {round(moon_illum*100)}%（干擾）・{zhr_label}・距極大 {days:+d}天"
+        else:
+            target_raw = f"月面照度 {round(moon_illum*100)}%（干擾）・無已知極大期"
+        profile_notes.append("⚠️ 流星雨題材：目標可見性以月面照度為主要干擾因子；ZHR 為靜態歷史值，實際流量可能有差異")
+    elif cci_profile == "moonscape":
+        # 月景：月光強度即是目標可見性（同 dark_window 邏輯但獨立計分）
+        if moon_illum >= 0.75:   target_score, target_raw = 100, f"月面照度 {round(moon_illum*100)}%（滿月，月景最強）"
+        elif moon_illum >= 0.50: target_score, target_raw = 80,  f"月面照度 {round(moon_illum*100)}%（盈月）"
+        elif moon_illum >= 0.25: target_score, target_raw = 45,  f"月面照度 {round(moon_illum*100)}%（半月）"
+        else:                    target_score, target_raw = 10,  f"月面照度 {round(moon_illum*100)}%（新月期，月景不適合）"
+    elif cci_profile == "lunar_eclipse":
+        # 月蝕：月亮在天上即可；月蝕時間另行查詢
+        moon_above = moon_info_day.get("moon_above_all_night", False)
+        moon_below = moon_info_day.get("moon_below_all_night", False)
+        if moon_above:
+            target_score, target_raw = 90, "月亮整夜可觀測，天況條件充足"
+        elif moon_below:
+            target_score, target_raw = 0,  "月亮整夜低於地平，月蝕無法觀測"
+        else:
+            target_score, target_raw = 60, "月亮部分時段可見"
+    elif cci_profile == "comet_layer1":
+        # 彗星第一層：無準確位置，給中性分數
+        target_score, target_raw = 50, "彗星位置資料缺失（靜態座標），以中性值計算"
+        profile_notes.append("⚠️ 彗星題材（第一層）：本評估僅提供天況 CCI，不含彗星方位角；位置請自行查詢 Stellarium 或 JPL Horizons")
+    else:
+        # default：原始暗空窗口邏輯
+        in_dark = any(w.get("in_dark_window", False) for w in windows_for_date)
+        has_win  = len(windows_for_date) > 0
+        if in_dark:   target_score, target_raw = 100, "暗空窗口內可見"
+        elif has_win: target_score, target_raw = 50,  "僅月光時段可見"
+        else:         target_score, target_raw = 0,   "目標不可見"
+    breakdown["target"] = {"score": target_score, "raw": target_raw, "weight": W["target"]}
 
-    # 6. 結露 / 起霧風險 (5%)
+    # 6. 結露 / 起霧風險
     if not weather_ok:
         dew_score, dew_raw = 80, "結露資料缺失"
     else:
@@ -1633,10 +1793,16 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
             if diff >= 3.0:   dew_score, dew_raw = 100, f"T−Td={diff:.1f}°C（安全）"
             elif diff >= 1.5: dew_score, dew_raw = 50,  f"T−Td={diff:.1f}°C（注意）"
             else:             dew_score, dew_raw = 0,   f"T−Td={diff:.1f}°C（高風險）"
-    breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": 0.05}
+    breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": W["dew"]}
 
-    # 7. 風速穩定性 (12%)  銀河最高容忍 3 級風，深空最高容忍 2 級風
-    wind_limit = 2 if wind_profile == "deep_sky" else 3
+    # 7. 風速穩定性
+    # 流星雨（廣角、無追蹤）容忍 4 級；深空 2 級；其他 3 級
+    if cci_profile == "meteor":
+        wind_limit = 4
+    elif wind_profile == "deep_sky":
+        wind_limit = 2
+    else:
+        wind_limit = 3
     wind_kmh = weather_day.get("wind_speed_kmh", -1)
     wind_bft = weather_day.get("wind_beaufort", -1)
     if not weather_ok or wind_kmh < 0 or wind_bft < 0:
@@ -1650,16 +1816,16 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
             wind_score = 65
         else:
             wind_score = 0
-    breakdown["wind"] = {"score": wind_score, "raw": wind_raw, "weight": 0.12}
+    breakdown["wind"] = {"score": wind_score, "raw": wind_raw, "weight": W["wind"]}
 
     score = round(
-        cloud_score  * 0.30 +
-        dark_score   * 0.22 +
-        seeing_score * 0.13 +
-        transp_score * 0.08 +
-        target_score * 0.10 +
-        dew_score    * 0.05 +
-        wind_score   * 0.12
+        cloud_score  * W["cloud"]        +
+        dark_score   * W["dark_window"]  +
+        seeing_score * W["seeing"]       +
+        transp_score * W["transparency"] +
+        target_score * W["target"]       +
+        dew_score    * W["dew"]          +
+        wind_score   * W["wind"]
     )
 
     if "weather_missing" in completeness_flags and "seeing_missing" in completeness_flags:
@@ -1675,7 +1841,14 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     elif score >= 20: label = "🟠 不建議"
     else:             label = "❌ 不值得出勤"
 
-    return {"score": score, "label": label, "breakdown": breakdown, "completeness": completeness}
+    return {
+        "score":        score,
+        "label":        label,
+        "breakdown":    breakdown,
+        "completeness": completeness,
+        "cci_profile":  cci_profile,
+        "profile_notes": profile_notes,
+    }
 
 
 # ── 全台最佳地點排名（Phase 3A #4） ───────────────────────────
@@ -2012,14 +2185,17 @@ def _format_time(dt):
     return dt.strftime("%H:%M")
 
 def generate_reply(result):
-    intent    = result["intent"]
-    good      = result["good_windows"]
-    all_wins  = result.get("all_windows", [])
-    moon_info = result["moon_info"]
-    showers   = result["showers"]
-    mw_comp   = result["mw_composition_by_date"]
-    data_quality = result.get("data_quality", {})
-    cci_by_date  = result.get("cci_by_date", {})
+    intent           = result["intent"]
+    good             = result["good_windows"]
+    all_wins         = result.get("all_windows", [])
+    moon_info        = result["moon_info"]
+    showers          = result["showers"]
+    mw_comp          = result["mw_composition_by_date"]
+    data_quality     = result.get("data_quality", {})
+    cci_by_date      = result.get("cci_by_date", {})
+    cci_profile      = result.get("cci_profile", "default")
+    unsupported_info = result.get("unsupported_info", {})
+    matched_targets  = result.get("matched_targets", [])
 
     windows_for_llm = good if good else sorted(
         all_wins, key=lambda w: w.get("alt_deg", 0), reverse=True
@@ -2142,6 +2318,56 @@ def generate_reply(result):
 
     data_quality_text = json.dumps(data_quality, ensure_ascii=False)
 
+    # ── 設備適配提示（深空目標才顯示）──────────────────────────
+    TRACKING_LABEL = {"no":"不需要", "optional":"可選（有更好）", "recommended":"建議有", "required":"必須有"}
+    DIFFICULTY_LABEL = {1:"⭐ 入門", 2:"⭐⭐ 初階", 3:"⭐⭐⭐ 中階", 4:"⭐⭐⭐⭐ 進階"}
+    equip_hints = []
+    for t in matched_targets:
+        if t.get("min_focal_mm"):
+            track = TRACKING_LABEL.get(t.get("tracking_required",""), t.get("tracking_required",""))
+            diff  = DIFFICULTY_LABEL.get(t.get("difficulty", 1), "")
+            equip_hints.append(
+                f"  • {t['name']}：最短焦距 {t['min_focal_mm']}mm，赤道儀 {track}，難度 {diff}"
+            )
+    equip_context = ("設備適配（深空題材）：\n" + "\n".join(equip_hints)) if equip_hints else ""
+
+    # ── 收集 profile_notes 去重 ───────────────────────────────
+    all_profile_notes = []
+    for cci in cci_by_date.values():
+        for note in cci.get("profile_notes", []):
+            if note not in all_profile_notes:
+                all_profile_notes.append(note)
+
+    # ── 題材特殊說明（放入 system prompt） ────────────────────
+    if cci_profile == "meteor":
+        subject_instruction = """
+【流星雨題材特殊說明】
+- 本次 CCI 以月面照度為主要干擾因子（月越亮越扣分），非暗空窗口決定
+- ZHR 為歷史靜態值，實際流量可能因彗星塵雲分布而不同，不可保證
+- 【裝備提醒】必須說明：廣角鏡（14–35mm）為主力，不需赤道儀，固定腳架即可
+- 若 ZHR ≥ 100，可加強「值得等待」的說法；ZHR < 30 要提醒期望值不高"""
+    elif cci_profile == "moonscape":
+        subject_instruction = """
+【月景題材特殊說明】
+- 本次 CCI 以月光強度為加分項，月越亮 CCI 越高（與深空攝影邏輯相反）
+- 【結論】應說明月景出勤可行性；不需提暗空窗口
+- 【裝備提醒】中長焦（50–200mm）配合前景地貌效果最佳；無需赤道儀"""
+    elif cci_profile == "lunar_eclipse":
+        subject_instruction = """
+【月蝕題材特殊說明】
+- 本次 CCI 不考慮暗空窗口需求（月蝕時月亮本身是主角）
+- 透明度是最關鍵因子（月蝕顏色清晰度取決於大氣透明度）
+- 【重要】本系統不計算月蝕時間；月蝕食相時刻請查詢台北天文館（tam.gov.taipei）或 Stellarium
+- 若 CCI 條件佳，說明天況適合觀賞月蝕，但必須補上「請另行確認月蝕時間」的提示"""
+    elif cci_profile == "comet_layer1":
+        subject_instruction = """
+【彗星題材特殊說明（第一層）】
+- 本評估僅提供天況 CCI，彗星方位角不可信（靜態座標已過期）
+- 【推薦時刻】區塊：可提供氣象窗口，但必須標注「彗星方位請另行查詢 Stellarium 或 JPL Horizons」
+- 禁止在回覆中提供彗星方位角或仰角作為觀測依據"""
+    else:
+        subject_instruction = ""
+
     system = f"""你是專業天文攝影顧問，熟悉台灣各地拍攝環境。繁體中文，親切專業。
 
 【硬性資料原則：不可猜測】
@@ -2203,6 +2429,8 @@ def generate_reply(result):
 
 若有流星雨加【流星雨加碼】
 
+{subject_instruction}
+
 核心原則：
 - 天文數據（仰角、方位角、月出月落）來自精確計算，如實呈現
 - 氣象判斷只根據提供的數據，不自行假設
@@ -2254,11 +2482,13 @@ def generate_reply(result):
                 )
     cci_str = json.dumps(cci_list, ensure_ascii=False, indent=2) if cci_list else "無 CCI 資料"
     risk_text = "\n".join(f"- {f}" for f in risk_flags) if risk_flags else "（本次查詢無高風險項目）"
+    profile_note_text = "\n".join(all_profile_notes) if all_profile_notes else ""
 
     return call_openrouter(
         system,
         (
             f"查詢類型：{'指定標的' if intent['query_type']=='A' else '開放探索'}\n"
+            f"CCI 計算模式：{cci_profile}\n"
             f"地點：{intent['location_name']}\n"
             f"日期：{intent['date_start']} ～ {intent['date_end']}\n"
             f"氣象狀態：{weather_status}\n"
@@ -2267,7 +2497,9 @@ def generate_reply(result):
             f"夜間平均視寧度（7Timer）：{f'{avg_seeing}/8（1=最佳）' if avg_seeing > 0 else 'N/A'}\n"
             f"夜間平均大氣透明度（7Timer）：{f'{avg_transparency}/8（1=最佳）' if avg_transparency > 0 else 'N/A'}\n\n"
             f"資料品質與缺資料紀錄：\n{data_quality_text}\n\n"
-            f"候選時刻{candidate_context}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
+            + (f"{equip_context}\n\n" if equip_context else "")
+            + (f"題材注意事項：\n{profile_note_text}\n\n" if profile_note_text else "")
+            + f"候選時刻{candidate_context}：\n{ws if windows_for_llm else '無天文觀測窗口'}\n\n"
             f"月相與暗空窗口：\n{ms}\n\n"
             + (f"銀河構圖資訊：\n{mw_str}\n\n" if mw_str is not None else "")
             + f"出勤信心指數（CCI）：\n{cci_str}\n\n"

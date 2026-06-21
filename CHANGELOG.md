@@ -1,5 +1,46 @@
 # CHANGELOG
 
+## 2026-06-21（M44 新增 + 別名系統）
+
+### 新增
+
+- **鬼宿星團 M44（蜂巢星團）**：加入 TARGET_LIBRARY。RA 08h 40.4m / Dec +19°59'，type=cluster，min_focal_mm=50，建議有赤道儀，難度⭐（入門）。
+  - 別名：m44、beehive、praesepe、蜂巢星團、積尸氣、巨蟹座星團
+  - 修復測試失敗：查詢「鬼宿星團」前回傳「目前沒有位置資料」
+
+### 改進
+
+- **TARGET_LIBRARY 別名系統**：所有天體加入 `aliases` 欄位（英文名、梅西爾編號、NGC 編號、常見別名）
+- **`_target_matches()` 輔助函式**：雙向 substring 同時比對正式名稱與所有 aliases
+- **`match_targets()` / `find_unmatched_targets()`**：改用 `_target_matches()`，LLM 回傳任何已知別名均可正確解析
+- **`determine_wind_profile()`**：加入 `cluster` type 對應 deep_sky 風速限制
+
+---
+
+## 2026-06-21（Phase 3A #5：多題材 CCI 框架）
+
+### 新增
+
+- **多題材 CCI 框架（Phase 3A #5）**：`compute_cci_for_date()` 新增 `cci_profile` 參數，支援以下四種題材模式：
+  - `meteor`（流星雨）：以月面照度為主要干擾因子，ZHR 加成目標可見性；風速容忍度放寬至 4 級（廣角無追蹤）
+  - `moonscape`（月景）：月光強度反轉為加分項；暗空窗口權重大幅降低；透明度優先
+  - `lunar_eclipse`（月蝕）：移除暗空窗口需求；透明度權重提升至 17%；月亮仰角決定可見性；附台北天文館查詢提示
+  - `comet_layer1`（彗星第一層）：天況 CCI 同深空；目標可見性固定中性 50 分（靜態座標不準確）；回覆強制附座標免責聲明
+- **`determine_cci_profile()`**：根據 intent、matched_targets、showers、unsupported_info 自動選擇 CCI profile
+- **`_moon_illumination()`**：從 moon_phase_pct 計算月面照度比例（0=新月, 1=滿月）
+- **設備適配標籤**：TARGET_LIBRARY 每個天體加入 `min_focal_mm`、`tracking_required`（no/optional/recommended/required）、`difficulty`（1–4）
+- **設備提示注入回覆**：深空題材查詢時，`generate_reply()` 自動彙整各標的設備需求，傳入 LLM `【裝備提醒】` 區塊
+- **`profile_notes` 機制**：CCI 計算時依 profile 附加說明（如「月蝕時間請查台北天文館」），匯整後傳入 LLM context
+
+### 改進
+
+- **月蝕從 hard-block 移除**：`UNSUPPORTED_KEYWORDS` 移除月蝕/月食相關條目，改由 `cci_profile=lunar_eclipse` 提供天況評估 + 軟性提示
+- **`check_unsupported()` 新增**：`has_lunar_eclipse` 與 `has_moonscape` 偵測旗標
+- **run_query 回傳值新增**：`cci_profile`、`unsupported_info`、`matched_targets`（帶設備欄位）
+- **`generate_reply()` 新增**：題材特殊說明（`subject_instruction`）注入 system prompt；設備適配與 profile_notes 注入 user content
+
+---
+
 ## 2026-06-21（文件與開發方向更新）
 
 > 本次無功能代碼變更。以下為產品範圍釐清與開發方向調整，已同步至 ROADMAP.md 與 SUBJECT_SCOPE.md。
