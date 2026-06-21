@@ -147,3 +147,48 @@ python3 ~/.codex/skills/taiwan-location-research/scripts/validate_locations.py d
 - 是否已 commit/push。
 - 是否已確認 Render health。
 - 若有需要使用者手動處理的資料，例如刪除舊 Google Sheet row，要明確說出。
+
+## 收工作業
+
+當使用者說「call it a day」、「收工」或等同意思時，需先確認目前狀態，再用下列格式回覆每日開發紀錄。
+
+收工前至少檢查：
+
+```bash
+git status --short --branch
+curl -sS https://astro-bot-web-xlny.onrender.com/healthz
+```
+
+每日開發紀錄格式：
+
+```markdown
+# Daily Development Note - YYYY-MM-DD
+
+## Today Completed
+- 
+
+## Code Changed
+- 
+
+## Tests / Validation
+- 
+
+## Issues Found
+- 
+
+## Decisions Made
+- 
+
+## Next Actions
+1. 
+2. 
+3. 
+
+## Restart Prompt for AI
+We are working on:
+Current goal:
+Today we completed:
+Next task:
+Important constraints:
+Known issues:
+```
