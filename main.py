@@ -1811,7 +1811,10 @@ def ranking_location_scope_counts(items):
         "approved": len(items) - user_count,
     }
 
-def rank_location_candidate(name, item, query_dates, matched_targets, wind_profile):
+MISSING_SEEING_DAY = {"data_status": "missing", "seeing": -1, "transparency": -1}
+MAX_SEEING_TRANSPARENCY_UPLIFT = 11
+
+def rank_location_candidate(name, item, query_dates, matched_targets, wind_profile, include_seeing=False):
     try:
         lat = item["lat"]
         lon = item["lon"]
@@ -1824,6 +1827,7 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
                 compute_target_windows(observer, target, query_dates, dark_windows_by_date)
             )
         weather = check_weather_multi(lat, lon, query_dates)
+        seeing_data = get_7timer_seeing(lat, lon, query_dates) if include_seeing else {}
         best = None
         for m in moon_info:
             d = m["date"]
@@ -1831,11 +1835,12 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
             cci = compute_cci_for_date(
                 weather.get(d, {}),
                 m,
-                {"data_status": "missing", "seeing": -1, "transparency": -1},
+                seeing_data.get(d, MISSING_SEEING_DAY),
                 wins_for_date,
                 wind_profile,
             )
             wx = weather.get(d, {})
+            sd = seeing_data.get(d, MISSING_SEEING_DAY)
             row = {
                 "name": name,
                 "region": item.get("region", ""),
@@ -1853,6 +1858,9 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
                 "dark_minutes": dark_window_minutes(m),
                 "target_visible": bool(wins_for_date),
                 "weather_status": wx.get("data_status", "missing"),
+                "seeing": sd.get("seeing", -1),
+                "transparency": sd.get("transparency", -1),
+                "ranking_precision": "refined" if include_seeing else "fast",
             }
             if best is None or (row["score"], row["dark_minutes"]) > (best["score"], best["dark_minutes"]):
                 best = row
@@ -1878,6 +1886,43 @@ def run_best_location_ranking(base_intent, limit=6):
             row = future.result()
             if row:
                 candidates.append(row)
+
+    candidates.sort(
+        key=lambda r: (
+            r["score"],
+            1 if r.get("weather_status") == "ok" else 0,
+            r["dark_minutes"],
+            -1 * (r["cloud_cover"] if r["cloud_cover"] >= 0 else 999),
+        ),
+        reverse=True,
+    )
+    fast_cutoff = candidates[min(limit, len(candidates)) - 1]["score"] if candidates else 0
+    refine_names = {
+        row["name"]
+        for idx, row in enumerate(candidates)
+        if idx < limit * 3 or row["score"] + MAX_SEEING_TRANSPARENCY_UPLIFT >= fast_cutoff
+    }
+    refined_by_name = {}
+    if refine_names:
+        items_by_name = dict(location_items)
+        with ThreadPoolExecutor(max_workers=6) as pool:
+            futures = [
+                pool.submit(
+                    rank_location_candidate,
+                    name,
+                    items_by_name[name],
+                    query_dates,
+                    matched_targets,
+                    wind_profile,
+                    True,
+                )
+                for name in refine_names
+            ]
+            for future in futures:
+                row = future.result()
+                if row:
+                    refined_by_name[row["name"]] = row
+    candidates = [refined_by_name.get(row["name"], row) for row in candidates]
     candidates.sort(
         key=lambda r: (
             r["score"],
@@ -1895,6 +1940,7 @@ def run_best_location_ranking(base_intent, limit=6):
         "candidate_count": len(candidates),
         "scope_counts": ranking_location_scope_counts(location_items),
         "wind_profile": wind_profile,
+        "refined_count": len(refined_by_name),
     }
 
 def format_duration_minutes(total_min):
@@ -1931,12 +1977,13 @@ def generate_best_location_reply(ranking):
         cloud = f"{row['cloud_cover']}%" if row["cloud_cover"] >= 0 else "N/A"
         vis = f"{row['visibility_km']}km" if row["visibility_km"] >= 0 else "N/A"
         wind = f"{row['wind_speed_kmh']}km/h・{row['wind_beaufort']}級" if row["wind_speed_kmh"] >= 0 else "N/A"
+        seeing = f"視寧 {row['seeing']}/8・透明 {row['transparency']}/8" if row.get("seeing", -1) > 0 else "視寧/透明未精算"
         dew = "結露風險" if row["dew_risk"] else "結露低"
         visible = "目標可見" if row["target_visible"] else "目標窗口弱"
         lines.append(
             f"{idx}. {row['name']}（{row['region']}）{icon} {row['score']}%｜"
             f"{row['date'].strftime('%m/%d')}｜雲量 {cloud}・暗空 {format_duration_minutes(row['dark_minutes'])}・"
-            f"風 {wind}・能見度 {vis}・{dew}・{visible}"
+            f"風 {wind}・{seeing}・能見度 {vis}・{dew}・{visible}"
         )
     best = ranked[0]
     if best["score"] < 40:
@@ -1950,7 +1997,10 @@ def generate_best_location_reply(ranking):
             f"➡️ 最佳：{best['name']}，信心度 {best['score']}%。出發前仍建議確認即時雲圖與現地道路狀況。"
         ])
     wind_note = "銀河容忍上限 3 級風" if ranking.get("wind_profile") == "milky_way" else "深空容忍上限 2 級風"
-    lines.append(f"註：排名為快速 CCI（{wind_note}），視寧度/透明度暫以中性值處理；精查請再查單一地點。")
+    lines.append(
+        f"註：排名先用快速 CCI 全區篩選，再對可能進榜的 {ranking.get('refined_count', 0)} 個地點補 7Timer 精排"
+        f"（{wind_note}）。"
+    )
     return "\n".join(lines)
 
 
