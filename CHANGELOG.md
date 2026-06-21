@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-06-21（文件與開發方向更新）
+
+> 本次無功能代碼變更。以下為產品範圍釐清與開發方向調整，已同步至 ROADMAP.md 與 SUBJECT_SCOPE.md。
+
+### 開發方向變動（ROADMAP）
+
+- **Phase 3A exit gate 修正**：P90 < 15 秒移出 Phase 3A exit gate，確認為 Phase 3B #1 開發項目；3A exit gate 僅保留功能完成度（CCI、地點比較、多題材 CCI 框架）
+- **Phase 3A #5 範圍確認**：in scope 為流星雨、月景、月蝕、彗星第一層（氣象 CCI 不含方位角）及深空題材設備適配標籤；雲海、日落日出、懸日、日月行星排除本季；日蝕至 2032-11-03 前不開發
+- **Phase 3B 新增三項需求**：#12 Meteoblue 視寧度資料評估、#13 IMO Live ZHR 流星雨即時修正、#14 南十字座地點限制強化（`southern_horizon_clear` 欄位）
+- **Phase 3B #11 彗星座標整合**：MPC + JPL Horizons 每日凌晨 2 點快取，快取失效降級第一層
+- **彗星從「待驗證後才做」移至 Phase 3B #11**：開發條件明確，不再列為待驗證
+- **Meteoblue 從「待驗證」升級為 Phase 3B #12 主動評估項目**
+
+### 新增文件
+
+- 新建 `SUBJECT_SCOPE.md`：各攝影題材 CCI 支援範圍評估，含 in/out scope 原因、應對方式、開放條件、設備適配性、地點相依性限制
+
+### 文件更新
+
+- `README.md`：功能說明同步至 Phase 3A 完成狀態（CCI、地點比較、最佳地點排名）；新增「即將推出」區塊；「限制」重構為「目前不支援」並補齊各題材排除原因
+- `ROADMAP.md`：Phase 3A #5 說明更新、exit gate 修正、Phase 3B 新增 #12–#14、Phase 4B #2 器材記憶說明補充
+
+### 流程改善
+
+- `HERMAS_AGENT.md` 新增「文件管理流程」區塊：定義各文件職責分工（CHANGELOG / ROADMAP / SUBJECT_SCOPE.md / README.md / HERMAS_AGENT.md）、更新時機、衝突處理原則
+- `HERMAS_AGENT.md` 新增「流程改善」區塊：定義何時觸發流程回顧、如何更新規範、並建立流程改善記錄表
+
+---
+
 ## 2026-06-21（今晚 / 週末最佳地點 MVP）
 
 ### 新增
