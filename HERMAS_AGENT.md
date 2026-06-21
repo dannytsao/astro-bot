@@ -148,6 +148,25 @@ python3 ~/.codex/skills/taiwan-location-research/scripts/validate_locations.py d
 - 是否已確認 Render health。
 - 若有需要使用者手動處理的資料，例如刪除舊 Google Sheet row，要明確說出。
 
+## 開工作業
+
+當使用者說「開工」、「動工」、「start the day」或等同意思時，需先確認目前狀態，再回覆可接續的工作摘要。
+
+開工前至少檢查：
+
+```bash
+git status --short --branch
+curl -sS https://astro-bot-web-xlny.onrender.com/healthz
+```
+
+開工回覆需包含：
+
+- Current branch/status
+- Production version/health
+- Last known goal 或目前 Phase
+- 是否有 uncommitted changes
+- Suggested next action
+
 ## 收工作業
 
 當使用者說「call it a day」、「收工」或等同意思時，需先確認目前狀態，再用下列格式回覆每日開發紀錄。
