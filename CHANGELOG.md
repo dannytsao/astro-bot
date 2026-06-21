@@ -4,9 +4,9 @@
 
 ### 新增
 
-- **最佳地點排名（Phase 3A #4 MVP）**：支援「今晚哪裡最好拍銀河」「這週末去哪裡拍」等全台 approved 地點排名查詢
+- **最佳地點排名（Phase 3A #4 MVP）**：支援「今晚哪裡最好拍銀河」「這週末去哪裡拍」等全台地點排名查詢
   - 新增 `is_best_location_query()`：在單一地點解析前攔截「哪裡 / 去哪裡 / 最佳地點」類查詢，避免被誤判為缺少地點
-  - 新增 `run_best_location_ranking()`：對 approved 地點平行計算 CCI，回覆 Top 5
+  - 新增 `run_best_location_ranking()`：對 production approved 地點與使用者曾提供座標的自定義地點平行計算 CCI，回覆 Top 5
   - 回覆包含 CCI、日期、雲量、暗空窗口、能見度、結露風險與目標可見性
   - 為控制回覆時間，MVP 全台排名暫不逐地呼叫 7Timer；視寧度 / 透明度以中性值處理，精查仍建議查單一地點
 

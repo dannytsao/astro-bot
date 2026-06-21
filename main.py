@@ -1694,6 +1694,23 @@ def build_best_location_intent(text):
 def dark_window_minutes(moon_info_day):
     return sum((de - ds).seconds // 60 for ds, de in moon_info_day.get("dark_windows", []))
 
+def is_ranking_location(item):
+    return item.get("review_status") == "approved" or item.get("source") == "user-provided"
+
+def ranking_location_items():
+    return [
+        (name, item) for name, item in LOCATION_DATA.items()
+        if is_ranking_location(item)
+    ]
+
+def ranking_location_scope_counts(items):
+    user_count = sum(1 for _, item in items if item.get("source") == "user-provided")
+    return {
+        "total": len(items),
+        "user_provided": user_count,
+        "approved": len(items) - user_count,
+    }
+
 def rank_location_candidate(name, item, query_dates, matched_targets):
     try:
         lat = item["lat"]
@@ -1747,11 +1764,11 @@ def run_best_location_ranking(base_intent, limit=5):
     query_dates = [date_start + timedelta(days=i) for i in range((date_end - date_start).days + 1)]
     matched_targets = match_targets(base_intent.get("targets", []))
     candidates = []
+    location_items = ranking_location_items()
     with ThreadPoolExecutor(max_workers=8) as pool:
         futures = [
             pool.submit(rank_location_candidate, name, item, query_dates, matched_targets)
-            for name, item in LOCATION_DATA.items()
-            if item.get("review_status") == "approved"
+            for name, item in location_items
         ]
         for future in futures:
             row = future.result()
@@ -1772,6 +1789,7 @@ def run_best_location_ranking(base_intent, limit=5):
         "targets": [t["name"] for t in matched_targets],
         "ranked": candidates[:limit],
         "candidate_count": len(candidates),
+        "scope_counts": ranking_location_scope_counts(location_items),
     }
 
 def format_duration_minutes(total_min):
@@ -1795,7 +1813,11 @@ def generate_best_location_reply(ranking):
         "【最佳地點排行】",
         f"日期：{date_text}",
         f"題材：{target_text}",
-        f"資料範圍：{ranking['candidate_count']} 個 approved 地點",
+        (
+            f"資料範圍：{ranking['scope_counts']['total']} 個地點"
+            f"（production approved {ranking['scope_counts']['approved']}、"
+            f"自定義 {ranking['scope_counts']['user_provided']}）"
+        ),
         "",
     ]
     for idx, row in enumerate(ranked, 1):
