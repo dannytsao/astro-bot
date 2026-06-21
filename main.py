@@ -700,13 +700,16 @@ def get_milky_way_composition(observer, query_date, dark_windows):
 def compute_target_windows(observer, target, query_dates, dark_windows_by_date=None):
     star = Star(ra_hours=target["ra_hours"], dec_degrees=target["dec_degrees"])
     windows = []
+    tz_tst = timezone(timedelta(hours=8))
     for d in query_dates:
         if dark_windows_by_date and d in dark_windows_by_date:
             day_windows = dark_windows_by_date[d]
         else:
             day_windows = None
-        if day_windows is not None and len(day_windows) == 0:
-            continue
+
+        best_for_day = None
+
+        # ── 主要掃描：在暗空窗口內 ─────────────────────────────
         if day_windows:
             scan_times = []
             for (win_start, win_end) in day_windows:
@@ -714,28 +717,46 @@ def compute_target_windows(observer, target, query_dates, dark_windows_by_date=N
                 while current <= win_end:
                     scan_times.append(current)
                     current += timedelta(minutes=10)
-        else:
-            tz_tst = timezone(timedelta(hours=8))
-            scan_times = [
-                datetime(d.year, d.month, d.day, 19, 0, tzinfo=tz_tst) + timedelta(minutes=mo)
-                for mo in range(0, 10 * 60, 10)
+            for dt_tst in scan_times:
+                dt_utc = dt_tst.astimezone(timezone.utc)
+                t = ts.from_datetime(dt_utc)
+                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
+                alt, az, _ = apparent.altaz()
+                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
+                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
+                        best_for_day = {
+                            "target_name":  target["name"],
+                            "target_type":  target["type"],
+                            "datetime_tst": dt_tst,
+                            "alt_deg":      round(alt.degrees, 1),
+                            "az_deg":       round(az.degrees, 1),
+                            "in_dark_window": True,
+                        }
+
+        # ── 備用掃描：整夜 18:00–06:00，in_dark_window=False ──
+        # 觸發條件：(a) 無暗空資料，(b) 暗空窗口為空（月光干擾），
+        #           (c) 暗空窗口存在但目標在窗口內仰角不足（如夏至晚落標的）
+        if best_for_day is None:
+            fallback_times = [
+                datetime(d.year, d.month, d.day, 18, 0, tzinfo=tz_tst) + timedelta(minutes=mo)
+                for mo in range(0, 12 * 60, 10)   # 18:00 → 06:00+1day
             ]
-        best_for_day = None
-        for dt_tst in scan_times:
-            dt_utc = dt_tst.astimezone(timezone.utc)
-            t = ts.from_datetime(dt_utc)
-            apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
-            alt, az, _ = apparent.altaz()
-            if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
-                if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
-                    best_for_day = {
-                        "target_name":  target["name"],
-                        "target_type":  target["type"],
-                        "datetime_tst": dt_tst,
-                        "alt_deg":      round(alt.degrees, 1),
-                        "az_deg":       round(az.degrees, 1),
-                        "in_dark_window": day_windows is not None,
-                    }
+            for dt_tst in fallback_times:
+                dt_utc = dt_tst.astimezone(timezone.utc)
+                t = ts.from_datetime(dt_utc)
+                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
+                alt, az, _ = apparent.altaz()
+                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
+                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
+                        best_for_day = {
+                            "target_name":  target["name"],
+                            "target_type":  target["type"],
+                            "datetime_tst": dt_tst,
+                            "alt_deg":      round(alt.degrees, 1),
+                            "az_deg":       round(az.degrees, 1),
+                            "in_dark_window": False,
+                        }
+
         if best_for_day:
             windows.append(best_for_day)
     return windows
