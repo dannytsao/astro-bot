@@ -1,5 +1,30 @@
 # CHANGELOG
 
+## 2026-06-21（方案 B+A1+A2：完整 Messier 目錄 + 未命中目標回覆改善）
+
+### 新增（方案 B）
+
+- **TARGET_LIBRARY 擴充至完整 Messier 目錄（M1–M110）**：
+  - 新增約 90 個天體（排除已收錄 M8/M16/M31/M42/M44；跳過 M40 雙星、M73 星群、M102 爭議）
+  - 涵蓋冬季（M1、M35–M38、M41、M45–M50 等）、春季（M51、M63–M66、M81–M109 等）、夏季（M4–M25 範圍、M56–M57 等）、秋季（M2、M33、M74–M77 等）所有 Messier 天體
+  - 每個條目完整填寫 RA/Dec、type、min_alt/max_alt、min_focal_mm、tracking_required、difficulty、aliases（含英文名稱與中文別名）
+  - 南天低仰角天體（Dec < -30°）調整 max_alt 為實際可達天頂角
+
+### 改善（方案 A1）
+
+- **`generate_reply()` 注入未命中目標固定格式**：
+  - 當 `data_quality.celestial_positions.unmatched_targets` 非空時，自動在 system prompt 注入固定回覆段落
+  - 格式：`⚠️ [目標名稱] — 本系統尚無此天體的座標資料，無法計算方位與觀測窗口。` + 兩個行動建議
+  - LLM 被指示逐一照字輸出，不可自行修改措辭
+
+### 改善（方案 A2）
+
+- **未命中目標自動寫入 Google Sheets 用戶反饋**：
+  - `log_query()` 中新增檢查；發現 `unmatched_targets` 時自動呼叫 `ws_feedback.append_row()`
+  - 格式：`【未命中標的】目標名1, 目標名2（查詢：原始文字）`，供開發者追蹤哪些天體需要加入資料庫
+
+---
+
 ## 2026-06-21（修復：夏季低仰角標的「無觀測窗口」誤報）
 
 ### 問題描述

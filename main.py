@@ -340,6 +340,19 @@ def log_query(username, user_id, query, intent, data_quality=None):
     except Exception as e:
         print(f"[Sheets 錯誤] {describe_exception(e)}", flush=True)
 
+    # A2：未命中目標自動寫入用戶反饋（讓開發者知道哪些標的缺資料）
+    unmatched = (data_quality or {}).get("celestial_positions", {}).get("unmatched_targets", [])
+    if unmatched and ws_feedback:
+        try:
+            ws_feedback.append_row([
+                datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
+                username,
+                f"【未命中標的】{', '.join(unmatched)}（查詢：{query}）",
+            ])
+            print(f"[Sheets] 已記錄未命中目標：{unmatched}", flush=True)
+        except Exception as e:
+            print(f"[Sheets 錯誤] 未命中目標記錄失敗：{describe_exception(e)}", flush=True)
+
 def normalize_feedback_content(rating, feedback_type, wish=""):
     content = (wish or "").strip()
     if content:
@@ -461,6 +474,233 @@ TARGET_LIBRARY = [
     {"name":"紫金山-ATLAS彗星",  "ra_hours":3.20,    "dec_degrees":15.0,   "type":"comet",         "min_alt":10,"max_alt":60, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
      "aliases":["atlas","紫金山","c/2023 a3"]},
 ]
+
+# ── Messier 目錄擴充（排除已收錄 M8/M16/M31/M42/M44；跳過 M40/M73/M102）──
+# 共 90 個天體；min_focal_mm / difficulty 依 type 與視直徑設定預設值
+TARGET_LIBRARY += [
+    # ── 冬季天體 ──────────────────────────────────────────────────
+    {"name":"蟹狀星雲 M1",       "ra_hours":5.576,   "dec_degrees":22.01,  "type":"nebula",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m1","crab nebula","蟹狀星雲","超新星殘骸"]},
+    {"name":"梅安星雲 M43",      "ra_hours":5.593,   "dec_degrees":-5.27,  "type":"nebula",   "min_alt":10,"max_alt":60, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m43","de mairan nebula","梅安","獵戶座M43"]},
+    {"name":"昴宿星團 M45",      "ra_hours":3.788,   "dec_degrees":24.11,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m45","pleiades","七姐妹","七姐妹星團","昴星團","昴宿","subaru"]},
+    {"name":"鬼宿星雲 M78",      "ra_hours":5.779,   "dec_degrees":0.08,   "type":"nebula",   "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m78","ngc2068","mcneil nebula","反射星雲","m78反射"]},
+    {"name":"武仙球狀星團 M79",  "ra_hours":5.404,   "dec_degrees":-24.52, "type":"globular", "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m79","ngc1904"]},
+    {"name":"雙子開星團 M35",    "ra_hours":6.148,   "dec_degrees":24.33,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m35","ngc2168","雙子星團"]},
+    {"name":"御夫星團 M36",      "ra_hours":5.601,   "dec_degrees":34.13,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m36","ngc1960","御夫M36"]},
+    {"name":"御夫星團 M37",      "ra_hours":5.873,   "dec_degrees":32.55,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m37","ngc2099","御夫M37"]},
+    {"name":"御夫星團 M38",      "ra_hours":5.478,   "dec_degrees":35.85,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m38","ngc1912","御夫M38"]},
+    {"name":"大犬開星團 M41",    "ra_hours":6.783,   "dec_degrees":-20.73, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m41","ngc2287","大犬星團"]},
+    {"name":"船尾開星團 M46",    "ra_hours":7.697,   "dec_degrees":-14.82, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m46","ngc2437","船尾M46"]},
+    {"name":"船尾開星團 M47",    "ra_hours":7.611,   "dec_degrees":-14.48, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m47","ngc2422","船尾M47"]},
+    {"name":"長蛇開星團 M48",    "ra_hours":8.233,   "dec_degrees":-5.80,  "type":"cluster",  "min_alt":10,"max_alt":60, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m48","ngc2548"]},
+    {"name":"麒麟開星團 M50",    "ra_hours":7.050,   "dec_degrees":-8.37,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m50","ngc2323","麒麟M50"]},
+    {"name":"船尾開星團 M93",    "ra_hours":7.742,   "dec_degrees":-23.85, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m93","ngc2447","船尾M93"]},
+
+    # ── 春季天體 ──────────────────────────────────────────────────
+    {"name":"波德星系 M81",      "ra_hours":9.926,   "dec_degrees":69.07,  "type":"galaxy",   "min_alt":10,"max_alt":46, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m81","ngc3031","bode galaxy","波德","bode's galaxy"]},
+    {"name":"雪茄星系 M82",      "ra_hours":9.926,   "dec_degrees":69.68,  "type":"galaxy",   "min_alt":10,"max_alt":46, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m82","ngc3034","cigar galaxy","雪茄","cigar"]},
+    {"name":"獅子星系 M65",      "ra_hours":11.315,  "dec_degrees":13.10,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m65","ngc3623","leo triplet","獅子三重奏"]},
+    {"name":"獅子星系 M66",      "ra_hours":11.336,  "dec_degrees":12.98,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m66","ngc3627","leo triplet","獅子三重奏"]},
+    {"name":"室女星系 M49",      "ra_hours":12.497,  "dec_degrees":8.00,   "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m49","ngc4472","室女M49"]},
+    {"name":"貓頭鷹星雲 M97",    "ra_hours":11.248,  "dec_degrees":55.02,  "type":"nebula",   "min_alt":10,"max_alt":60, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m97","ngc3587","owl nebula","貓頭鷹","owl"]},
+    {"name":"長蛇星系 M83",      "ra_hours":13.617,  "dec_degrees":-29.87, "type":"galaxy",   "min_alt":10,"max_alt":36, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m83","ngc5236","southern pinwheel","南風車","南風車星系"]},
+    {"name":"球狀星團 M53",      "ra_hours":13.215,  "dec_degrees":18.17,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m53","ngc5024","後發M53"]},
+    {"name":"草帽星系 M104",     "ra_hours":12.666,  "dec_degrees":-11.62, "type":"galaxy",   "min_alt":10,"max_alt":55, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m104","ngc4594","sombrero","草帽","sombrero galaxy"]},
+    {"name":"黑眼星系 M64",      "ra_hours":12.946,  "dec_degrees":21.68,  "type":"galaxy",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m64","ngc4826","black eye galaxy","黑眼","sleeping beauty"]},
+    {"name":"室女星系 M87",      "ra_hours":12.514,  "dec_degrees":12.39,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m87","ngc4486","virgo a","室女A","黑洞星系","virgo cluster"]},
+    {"name":"室女星系 M58",      "ra_hours":12.629,  "dec_degrees":11.82,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m58","ngc4579","室女M58"]},
+    {"name":"室女星系 M84",      "ra_hours":12.418,  "dec_degrees":12.89,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m84","ngc4374","室女M84","馬卡良鏈"]},
+    {"name":"室女星系 M86",      "ra_hours":12.436,  "dec_degrees":12.95,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m86","ngc4406","室女M86","馬卡良鏈"]},
+    {"name":"室女星系 M89",      "ra_hours":12.593,  "dec_degrees":12.56,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m89","ngc4552","室女M89"]},
+    {"name":"室女星系 M90",      "ra_hours":12.616,  "dec_degrees":13.16,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m90","ngc4569","室女M90"]},
+    {"name":"長蛇球狀星團 M68",  "ra_hours":12.657,  "dec_degrees":-26.74, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m68","ngc4590","長蛇M68"]},
+    {"name":"獵犬星系 M51",      "ra_hours":13.498,  "dec_degrees":47.20,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m51","ngc5194","whirlpool galaxy","渦狀星系","渦狀"]},
+    {"name":"獵犬星系 M63",      "ra_hours":13.264,  "dec_degrees":42.03,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m63","ngc5055","sunflower galaxy","向日葵","向日葵星系"]},
+    {"name":"獵犬星系 M94",      "ra_hours":12.851,  "dec_degrees":41.12,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m94","ngc4736","獵犬M94","croc's eye"]},
+    {"name":"風車星系 M101",     "ra_hours":14.053,  "dec_degrees":54.35,  "type":"galaxy",   "min_alt":10,"max_alt":58, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
+     "aliases":["m101","ngc5457","pinwheel galaxy","風車星系","pinwheel"]},
+    {"name":"大熊星系 M106",     "ra_hours":12.316,  "dec_degrees":47.30,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
+     "aliases":["m106","ngc4258","大熊M106"]},
+    {"name":"大熊星系 M108",     "ra_hours":11.192,  "dec_degrees":55.67,  "type":"galaxy",   "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m108","ngc3556","大熊M108"]},
+    {"name":"大熊星系 M109",     "ra_hours":11.960,  "dec_degrees":53.38,  "type":"galaxy",   "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m109","ngc3992","大熊M109"]},
+    {"name":"球狀星團 M3",       "ra_hours":13.703,  "dec_degrees":28.38,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m3","ngc5272","獵犬M3"]},
+    {"name":"武仙球狀星團 M13",  "ra_hours":16.695,  "dec_degrees":36.46,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m13","ngc6205","hercules cluster","武仙座大球狀星團","大力神星團"]},
+    {"name":"武仙球狀星團 M92",  "ra_hours":17.285,  "dec_degrees":43.14,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m92","ngc6341","武仙M92"]},
+
+    # ── 夏季天體 ──────────────────────────────────────────────────
+    {"name":"三裂星雲 M20",      "ra_hours":18.039,  "dec_degrees":-23.03, "type":"nebula",   "min_alt":10,"max_alt":45, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m20","trifid nebula","三裂","trifid"]},
+    {"name":"礁湖周邊星團 M21",  "ra_hours":18.076,  "dec_degrees":-22.50, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m21","ngc6531","射手M21"]},
+    {"name":"人馬星雲 M24",      "ra_hours":18.283,  "dec_degrees":-18.40, "type":"nebula",   "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m24","sagittarius star cloud","人馬星雲","銀河星雲","射手星雲"]},
+    {"name":"歐米茄星雲 M17",    "ra_hours":18.346,  "dec_degrees":-16.18, "type":"nebula",   "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m17","ngc6618","omega nebula","swan nebula","天鵝星雲","歐米茄","射手M17"]},
+    {"name":"蝴蝶星團 M6",       "ra_hours":17.668,  "dec_degrees":-32.15, "type":"cluster",  "min_alt":10,"max_alt":35, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m6","ngc6405","butterfly cluster","蝴蝶星團"]},
+    {"name":"托勒密星團 M7",     "ra_hours":17.900,  "dec_degrees":-34.82, "type":"cluster",  "min_alt":10,"max_alt":33, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m7","ngc6475","ptolemy cluster","托勒密","ptolemy"]},
+    {"name":"射手開星團 M18",    "ra_hours":18.333,  "dec_degrees":-17.08, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m18","ngc6613","射手M18"]},
+    {"name":"射手開星團 M23",    "ra_hours":17.950,  "dec_degrees":-19.02, "type":"cluster",  "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m23","ngc6494","射手M23"]},
+    {"name":"射手開星團 M25",    "ra_hours":18.527,  "dec_degrees":-19.25, "type":"cluster",  "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m25","ic4725","射手M25"]},
+    {"name":"盾牌野鴨星團 M11",  "ra_hours":18.851,  "dec_degrees":-6.27,  "type":"cluster",  "min_alt":10,"max_alt":58, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m11","ngc6705","wild duck cluster","野鴨星團","wild duck"]},
+    {"name":"蛇夫球狀星團 M9",   "ra_hours":17.319,  "dec_degrees":-18.52, "type":"globular", "min_alt":10,"max_alt":48, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m9","ngc6333","蛇夫M9"]},
+    {"name":"蛇夫球狀星團 M10",  "ra_hours":16.952,  "dec_degrees":-4.10,  "type":"globular", "min_alt":10,"max_alt":62, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m10","ngc6254","蛇夫M10"]},
+    {"name":"蛇夫球狀星團 M12",  "ra_hours":16.787,  "dec_degrees":-1.95,  "type":"globular", "min_alt":10,"max_alt":63, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m12","ngc6218","蛇夫M12"]},
+    {"name":"蛇夫球狀星團 M14",  "ra_hours":17.626,  "dec_degrees":-3.25,  "type":"globular", "min_alt":10,"max_alt":62, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m14","ngc6402","蛇夫M14"]},
+    {"name":"天蠍球狀星團 M4",   "ra_hours":16.393,  "dec_degrees":-26.53, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m4","ngc6121","天蠍M4","心宿旁球狀"]},
+    {"name":"天蠍球狀星團 M80",  "ra_hours":16.284,  "dec_degrees":-22.98, "type":"globular", "min_alt":10,"max_alt":44, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m80","ngc6093","天蠍M80"]},
+    {"name":"蛇夫球狀星團 M19",  "ra_hours":17.043,  "dec_degrees":-26.27, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m19","ngc6273","蛇夫M19"]},
+    {"name":"天蠍球狀星團 M62",  "ra_hours":17.021,  "dec_degrees":-30.12, "type":"globular", "min_alt":10,"max_alt":36, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m62","ngc6266","天蠍M62"]},
+    {"name":"蛇夫球狀星團 M107", "ra_hours":16.542,  "dec_degrees":-13.05, "type":"globular", "min_alt":10,"max_alt":52, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m107","ngc6171","蛇夫M107"]},
+    {"name":"射手球狀星團 M22",  "ra_hours":18.607,  "dec_degrees":-23.90, "type":"globular", "min_alt":10,"max_alt":44, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m22","ngc6656","射手M22","人馬球狀"]},
+    {"name":"射手球狀星團 M28",  "ra_hours":18.409,  "dec_degrees":-24.87, "type":"globular", "min_alt":10,"max_alt":43, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m28","ngc6626","射手M28"]},
+    {"name":"射手球狀星團 M69",  "ra_hours":18.523,  "dec_degrees":-32.35, "type":"globular", "min_alt":12,"max_alt":35, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
+     "aliases":["m69","ngc6637","射手M69"]},
+    {"name":"射手球狀星團 M70",  "ra_hours":18.722,  "dec_degrees":-32.30, "type":"globular", "min_alt":12,"max_alt":35, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
+     "aliases":["m70","ngc6681","射手M70"]},
+    {"name":"遠距球狀星團 M54",  "ra_hours":18.917,  "dec_degrees":-30.48, "type":"globular", "min_alt":12,"max_alt":36, "min_focal_mm":200, "tracking_required":"required",    "difficulty":4,
+     "aliases":["m54","ngc6715","射手M54","人馬矮星系球狀"]},
+    {"name":"射手星系 M55",      "ra_hours":19.667,  "dec_degrees":-30.97, "type":"globular", "min_alt":12,"max_alt":36, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":2,
+     "aliases":["m55","ngc6809","射手M55"]},
+    {"name":"巨蛇球狀星團 M5",   "ra_hours":15.309,  "dec_degrees":2.08,   "type":"globular", "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m5","ngc5904","巨蛇M5","巨蛇球狀"]},
+    {"name":"啞鈴星雲 M27",      "ra_hours":19.994,  "dec_degrees":22.72,  "type":"nebula",   "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m27","ngc6853","dumbbell nebula","啞鈴","哑铃星云","狐狸座行星狀"]},
+    {"name":"天琴環狀星雲 M57",  "ra_hours":18.893,  "dec_degrees":33.03,  "type":"nebula",   "min_alt":10,"max_alt":80, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m57","ngc6720","ring nebula","環狀星雲","戒指星雲","ring"]},
+    {"name":"天琴球狀星團 M56",  "ra_hours":19.275,  "dec_degrees":30.18,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m56","ngc6779","天琴M56"]},
+    {"name":"飛馬球狀星團 M15",  "ra_hours":21.499,  "dec_degrees":12.17,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m15","ngc7078","飛馬M15","大力神M15"]},
+    {"name":"天鵝開星團 M39",    "ra_hours":21.533,  "dec_degrees":48.43,  "type":"cluster",  "min_alt":10,"max_alt":70, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m39","ngc7092","天鵝M39","天鵝座星團"]},
+
+    # ── 秋季天體 ──────────────────────────────────────────────────
+    {"name":"水瓶球狀星團 M2",   "ra_hours":21.558,  "dec_degrees":-0.82,  "type":"globular", "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m2","ngc7089","水瓶M2"]},
+    {"name":"摩羯球狀星團 M30",  "ra_hours":21.672,  "dec_degrees":-23.18, "type":"globular", "min_alt":10,"max_alt":45, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m30","ngc7099","摩羯M30"]},
+    {"name":"水瓶球狀星團 M72",  "ra_hours":20.891,  "dec_degrees":-12.53, "type":"globular", "min_alt":10,"max_alt":55, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m72","ngc6981","水瓶M72"]},
+    {"name":"人馬開星團 M26",    "ra_hours":18.755,  "dec_degrees":-9.40,  "type":"cluster",  "min_alt":10,"max_alt":57, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":2,
+     "aliases":["m26","ngc6694","盾牌M26"]},
+    {"name":"三角座星系 M33",    "ra_hours":1.564,   "dec_degrees":30.66,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"recommended", "difficulty":4,
+     "aliases":["m33","ngc598","triangulum galaxy","三角星系","風車星系M33","pinwheel m33"]},
+    {"name":"仙女座矮星系 M32",  "ra_hours":0.712,   "dec_degrees":40.87,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m32","ngc221","仙女矮星系","仙女M32"]},
+    {"name":"仙女矮橢圓星系 M110","ra_hours":0.672,  "dec_degrees":41.68,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":2,
+     "aliases":["m110","ngc205","仙女M110","仙女座衛星星系"]},
+    {"name":"英仙開星團 M34",    "ra_hours":2.703,   "dec_degrees":42.78,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m34","ngc1039","英仙M34"]},
+    {"name":"英仙開星團 M76",    "ra_hours":1.706,   "dec_degrees":51.58,  "type":"nebula",   "min_alt":10,"max_alt":65, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m76","ngc650","little dumbbell","小啞鈴星雲","小花生"]},
+    {"name":"鯨魚星系 M77",      "ra_hours":2.711,   "dec_degrees":-0.01,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m77","ngc1068","cetus a","鯨魚M77"]},
+    {"name":"仙后開星團 M52",    "ra_hours":23.404,  "dec_degrees":61.58,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m52","ngc7654","仙后M52"]},
+    {"name":"仙后開星團 M103",   "ra_hours":1.556,   "dec_degrees":60.65,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m103","ngc581","仙后M103"]},
+    {"name":"天箭球狀星團 M71",  "ra_hours":19.896,  "dec_degrees":18.78,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
+     "aliases":["m71","ngc6838","天箭M71"]},
+    {"name":"寶瓶球狀星團 M75",  "ra_hours":20.101,  "dec_degrees":-21.92, "type":"globular", "min_alt":10,"max_alt":45, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m75","ngc6864","射手M75"]},
+    {"name":"幻影星系 M74",      "ra_hours":1.611,   "dec_degrees":15.78,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":200, "tracking_required":"required",    "difficulty":4,
+     "aliases":["m74","ngc628","phantom galaxy","幻影","fish galaxy"]},
+    {"name":"天鵝開星團 M29",    "ra_hours":20.396,  "dec_degrees":38.52,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
+     "aliases":["m29","ngc6913","天鵝M29"]},
+
+    # ── 其他天體（補遺）────────────────────────────────────────────
+    {"name":"巨蟹開星團 M67",    "ra_hours":8.842,   "dec_degrees":11.82,  "type":"cluster",  "min_alt":10,"max_alt":73, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":2,
+     "aliases":["m67","ngc2682","巨蟹M67","ngc 2682"]},
+    {"name":"室女星系 M85",      "ra_hours":12.423,  "dec_degrees":18.18,  "type":"galaxy",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m85","ngc4382","後發M85"]},
+    {"name":"室女星系 M88",      "ra_hours":12.533,  "dec_degrees":14.42,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m88","ngc4501","室女M88"]},
+    {"name":"室女星系 M91",      "ra_hours":12.591,  "dec_degrees":14.50,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m91","ngc4548","室女M91"]},
+    {"name":"室女星系 M98",      "ra_hours":12.231,  "dec_degrees":14.90,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m98","ngc4192","室女M98"]},
+    {"name":"室女星系 M99",      "ra_hours":12.313,  "dec_degrees":14.42,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m99","ngc4254","pinwheel m99","室女M99"]},
+    {"name":"室女星系 M100",     "ra_hours":12.384,  "dec_degrees":15.82,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m100","ngc4321","室女M100"]},
+    {"name":"室女星系 M59",      "ra_hours":12.700,  "dec_degrees":11.65,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m59","ngc4621","室女M59"]},
+    {"name":"室女星系 M60",      "ra_hours":12.727,  "dec_degrees":11.55,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m60","ngc4649","室女M60"]},
+    {"name":"室女星系 M61",      "ra_hours":12.365,  "dec_degrees":4.47,   "type":"galaxy",   "min_alt":10,"max_alt":67, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m61","ngc4303","室女M61"]},
+    {"name":"獅子星系 M95",      "ra_hours":10.737,  "dec_degrees":11.70,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m95","ngc3351","獅子M95"]},
+    {"name":"獅子星系 M96",      "ra_hours":10.780,  "dec_degrees":11.82,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m96","ngc3368","獅子M96"]},
+    {"name":"獅子星系 M105",     "ra_hours":10.797,  "dec_degrees":12.58,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
+     "aliases":["m105","ngc3379","獅子M105"]},
+]
+
+# 去除萬一出現的重複 name（防禦性）
+_seen_names = set()
+_deduped = []
+for _t in TARGET_LIBRARY:
+    if _t["name"] not in _seen_names:
+        _seen_names.add(_t["name"])
+        _deduped.append(_t)
+TARGET_LIBRARY = _deduped
 
 METEOR_SHOWERS = [
     {"name":"象限儀座流星雨","peak_month":1,  "peak_day":4,  "zenithal_hourly_rate":120},
@@ -2339,6 +2579,28 @@ def generate_reply(result):
 
     data_quality_text = json.dumps(data_quality, ensure_ascii=False)
 
+    # ── A1：未命中目標固定回覆格式 ──────────────────────────────
+    unmatched_targets = (
+        data_quality.get("celestial_positions", {}).get("unmatched_targets", [])
+    )
+    if unmatched_targets:
+        unmatched_lines = []
+        for tgt in unmatched_targets:
+            unmatched_lines.append(
+                f"⚠️ **{tgt}** — 本系統尚無此天體的座標資料，無法計算方位與觀測窗口。\n"
+                f"  您可以：\n"
+                f"  1. 嘗試輸入 NGC/IC 編號或常見英文名稱\n"
+                f"  2. 於 Stellarium 或 theskylive.com 查詢該天體的即時位置"
+            )
+        unmatched_block = "\n\n".join(unmatched_lines)
+        unmatched_instruction = f"""
+【未命中目標（必須使用以下固定格式回覆，不可更動措辭）】
+對以下每一個未命中目標，逐一照字輸出：
+{unmatched_block}
+輸出完上述固定段落後，才可繼續其他分析。"""
+    else:
+        unmatched_instruction = ""
+
     # ── 設備適配提示（深空目標才顯示）──────────────────────────
     TRACKING_LABEL = {"no":"不需要", "optional":"可選（有更好）", "recommended":"建議有", "required":"必須有"}
     DIFFICULTY_LABEL = {1:"⭐ 入門", 2:"⭐⭐ 初階", 3:"⭐⭐⭐ 中階", 4:"⭐⭐⭐⭐ 進階"}
@@ -2396,7 +2658,7 @@ def generate_reply(result):
 - 若資料狀態是 missing、partial、N/A、-1、空陣列或無資料，必須明確說「目前沒有資料」或「資料不足」，不可說成好/壞/可拍。
 - 氣象預報只能依 Open-Meteo 資料；Open-Meteo missing 時，不可評論雲量、濕度、能見度、天氣好壞。
 - 視寧度/透明度只能依 7Timer 資料；7Timer missing 時，不可評論視寧度或透明度好壞。
-- 天體位置只能依 Skyfield 與內建標的資料庫。若 data_quality.celestial_positions 有 unmatched_targets，必須明確說這些標的目前沒有位置資料，不可創造座標或觀測時刻。
+- 天體位置只能依 Skyfield 與內建標的資料庫。若 data_quality.celestial_positions 有 unmatched_targets，必須使用下方【未命中目標】區塊的固定格式回覆，不可創造座標或觀測時刻。
 - 若資料不足，仍可提供「已知的天文資料」與「需要補哪些資料」，但結論必須標示限制。
 
 【重要】氣象條件是第一優先判斷：
@@ -2456,7 +2718,9 @@ def generate_reply(result):
 - 天文數據（仰角、方位角、月出月落）來自精確計算，如實呈現
 - 氣象判斷只根據提供的數據，不自行假設
 - 天況不佳時主動建議替代方案（改期、換地點、轉攻其他題材）
-- 總長不超過 500 字"""
+- 總長不超過 500 字
+
+{unmatched_instruction}"""
 
     cci_list = []
     risk_flags = []
