@@ -45,6 +45,27 @@
 
 ---
 
+## 2026-07-05（文件同步：確認 Phase 3A 完成、Phase 3B 啟動前整理）
+
+> 本次無功能代碼變更。以下為文件狀態核對與開發方向確認，已同步至 ROADMAP.md 與 CLAUDE.md。
+
+### 開發方向確認（ROADMAP）
+
+- **確認 Phase 3A 已完成**：`ROADMAP.md` 離開指標表格中三項 hard gate（CCI、地點比較、多題材 CCI 框架）皆已 ✅；`CLAUDE.md` 先前的「Next Development Priority」段落仍寫 Phase 3A 為下一步，屬過時內容，已修正為 Phase 3B
+- **Phase 3B 新增技術債項目（順序 1，原順序 1–14 依序後移為 2–15）**：User State 持久化儲存。2026-06-10 架構檢討已將此列為最高優先、建議 Phase 3 前完成，但至今未處理；`main.py` 的 `user_state`／`user_pending_location_query`／`user_last_query`／`user_wish_text` 仍是記憶體 dict，Render 重啟或 redeploy 會清空使用中的對話狀態
+
+### 文件更新
+
+- `CLAUDE.md`：重寫「Next Development Priority」，反映 Phase 3A 完成狀態與 Phase 3B 現況順序，並修正 Meteoblue / JPL Horizons 已排入 Phase 3B 排程（非「立即核心工作」也非「永久不做」）的敘述
+- `ROADMAP.md`：Phase 3B 表格新增 User State 持久化項目
+- `HERMAS_AGENT.md`：收工作業新增「文件同步檢查」步驟，見下方流程改善記錄
+
+### 流程改善
+
+- 新增規範：收工作業必須主動核對 ROADMAP / CHANGELOG / CLAUDE.md / README / SUBJECT_SCOPE 是否反映當天實際開發內容與方向調整，不可仰賴使用者主動要求才更新（詳見 `HERMAS_AGENT.md` 流程改善記錄）
+
+---
+
 ## 2026-06-21（方案 B+A1+A2：完整 Messier 目錄 + 未命中目標回覆改善）
 
 ### 新增（方案 B）

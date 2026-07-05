@@ -197,6 +197,7 @@ python3 ~/.codex/skills/taiwan-location-research/scripts/validate_locations.py d
 | --- | --- | --- |
 | 2026-06-21 | 無文件管理流程規範，agent 不知道各文件職責分工與更新時機 | 新增「文件管理流程」與「流程改善」區塊 |
 | 2026-07-05 | 無自動化測試，匹配類 bug 反覆出現且 dry-run gate 只做 py_compile | main.py 拆分為 5 個模組；新增 `tests/` pytest 套件並列為 dry-run gate 必跑項目 |
+| 2026-07-05 | 文件更新仰賴使用者主動提出要求；agent 沒有在收工流程中主動核對 ROADMAP / CHANGELOG / CLAUDE.md 是否與當天實際開發方向同步，導致 CLAUDE.md「Next Development Priority」段落在 Phase 3A 完成後仍停留在舊優先順序 | 收工作業新增「文件同步檢查」步驟，並在每日開發紀錄格式加入「Docs Synced」區塊，強制每次收工前主動核對並視需要更新 |
 
 ---
 
@@ -240,6 +241,16 @@ git status --short --branch
 curl -sS https://astro-bot-web-xlny.onrender.com/healthz
 ```
 
+**文件同步檢查（必做，不可跳過，不可等使用者提醒才做）：**
+
+逐一核對以下文件是否反映今天實際的開發內容、方向調整與 Phase 狀態；有落差必須在收工前直接更新，不可留到下次工作階段才補：
+
+- `ROADMAP.md`：今天的功能開發、優先順序變動、Phase exit gate 狀態是否已反映
+- `CHANGELOG.md`：今天的程式碼變更與方向調整是否都有對應條目（無代碼變更但有方向調整也要記錄，並標注「無代碼變更」）
+- `CLAUDE.md`：「Next Development Priority」等摘要段落是否仍對應目前實際 Phase，避免下次工作階段從過時的優先順序重新開始
+- `README.md`：若今天有使用者面功能上線或下架，是否已同步
+- `SUBJECT_SCOPE.md`：若今天有題材範圍決策變動，是否已同步
+
 每日開發紀錄格式：
 
 ```markdown
@@ -264,6 +275,13 @@ curl -sS https://astro-bot-web-xlny.onrender.com/healthz
 1. 
 2. 
 3. 
+
+## Docs Synced
+- ROADMAP.md:
+- CHANGELOG.md:
+- CLAUDE.md:
+- README.md:
+- SUBJECT_SCOPE.md:
 
 ## Restart Prompt for AI
 We are working on:

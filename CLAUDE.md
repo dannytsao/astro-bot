@@ -24,17 +24,15 @@ The bot should eventually support:
 
 ## Next Development Priority
 
-The next phase is Phase 3A: 出勤決策引擎.
+Phase 3A (出勤決策引擎) is complete. All three hard exit gates — CCI, location comparison mode, multi-subject CCI framework — are ✅ in `ROADMAP.md`. Do not re-propose these as upcoming work or restart from this build order.
 
-Build order should follow `ROADMAP.md`:
+The project is now in Phase 3B: 規劃 UX 與資料營運. Current build order per `ROADMAP.md`:
 
-1. Confidence score / CCI.
-2. Red-team risk logic.
-3. Location comparison mode.
-4. Tonight / weekend best location ranking.
-5. Multi-subject decision framework.
+1. User state 持久化儲存 — technical debt flagged as highest priority in the 2026-06-10 architecture review, still unresolved. `user_state` / `user_pending_location_query` / `user_last_query` / `user_wish_text` in `main.py` are plain in-memory dicts; a Render restart or redeploy silently wipes any in-progress conversation state.
+2. 回覆速度優化（P90 < 15 秒，現況 30–60 秒）
+3. See the Phase 3B table in `ROADMAP.md` for the full ordered list after this: location DB enrichment, fallback locations, multi-night comparison, gear tips, location wishlist review workflow, cloud-sea/fog mode, sun/moon/planet scenes, 15-day calendar upgrade, voice input, comet live coordinates, Meteoblue seeing evaluation, IMO live ZHR, Southern Cross constraint.
 
-Do not revive the older priority order that treated Clear Outside, Meteoblue, JPL Horizons, drones, or restricted-area data as immediate core work. Those items are now deferred, validation-only, or dropped in `ROADMAP.md`.
+Do not revive the older priority order that treated Clear Outside, Meteoblue, JPL Horizons, drones, or restricted-area data as immediate core work. Meteoblue and JPL Horizons/MPC are now scheduled (Phase 3B #12 and #11) but not urgent; Clear Outside, drones, and restricted-area data remain deferred or dropped per `ROADMAP.md`.
 
 ## Runtime Facts
 
