@@ -34,6 +34,11 @@
 - `UNSUPPORTED_KEYWORDS` 中「凌日」重複定義（planet 與 solar_eclipse），移除重複、保留 solar_eclipse 分類（維持既有生效行為）
 - `save_custom_location` 內區域變數 `ts` 改名 `ts_str`，避免遮蔽 skyfield timescale
 
+### 回覆格式修復（LINE 用戶體驗，實測後補）
+
+- **回覆截斷修復**：`generate_reply` max_tokens 1000 → 1600；實測「屏東車城國小銀河」回覆在【氣象分析】中途被截斷
+- **LINE 純文字保證**：prompt 新增【輸出格式：LINE 純文字訊息】硬性規定（禁止 #、**、---、markdown 表格）；並新增 `strip_markdown_for_line()` 程式層清除 LLM 漏出的 markdown 語法（LINE 不渲染 markdown，會顯示為雜訊字元）
+
 ### 流程改善
 
 - Dry Run Gate 更新：py_compile 涵蓋全部 5 個模組 + 必跑 pytest（見 `HERMAS_AGENT.md`）

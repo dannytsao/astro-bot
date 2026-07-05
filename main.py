@@ -1771,6 +1771,12 @@ def generate_reply(result):
 - 若某因子得分 ≤ 15，該因子是出勤障礙，必須以明確的否定或警告措辭說明，不可用「偏高」「稍差」輕描淡寫
 - 只能使用 CCI 定義的五個 icon（✅ 🟢 ⚠️ 🟠 ❌），禁止使用 ⛔ 🚫 🔴 或其他未定義符號
 
+【輸出格式：LINE 純文字訊息】（硬性規定）
+- 回覆會直接顯示在 LINE 對話中，LINE 不支援 markdown，所有 markdown 語法都會變成雜訊字元
+- 禁止使用：#、##、**粗體**、*斜體*、`代碼`、--- 分隔線、markdown 表格、[連結](url)
+- 區塊標題一律用【】，重點用 emoji 標記，列表用「・」或「-」開頭的短行
+- 區塊之間空一行即可，不要用符號線分隔
+
 回覆格式（每區塊標題用【】，依氣象狀態調整詳細程度）：
 
 【結論】
@@ -1891,9 +1897,27 @@ def generate_reply(result):
             + f"必須點出的風險：\n{risk_text}\n\n"
             + f"流星雨：{ss}"
         ),
-        max_tokens=1000,
+        max_tokens=1600,
     )
+    reply_text = strip_markdown_for_line(reply_text)
     return enforce_no_go_language(reply_text, cci_by_date)
+
+
+_MD_HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s*", re.MULTILINE)
+_MD_BOLD_RE = re.compile(r"\*\*(.+?)\*\*", re.DOTALL)
+_MD_HR_RE = re.compile(r"^\s{0,3}([-*_])\1{2,}\s*$", re.MULTILINE)
+
+def strip_markdown_for_line(text):
+    """LINE 不支援 markdown：清除 LLM 偶爾漏出的 markdown 語法，保證純文字輸出。
+    prompt 已禁止 markdown，此處為程式層保證（同 enforce_no_go_language 的防線邏輯）。"""
+    if not text:
+        return text
+    text = _MD_HEADING_RE.sub("", text)      # 標題 # ## ###
+    text = _MD_BOLD_RE.sub(r"\1", text)      # **粗體**
+    text = _MD_HR_RE.sub("", text)           # --- 分隔線
+    # 連續 3+ 空行收斂為 2
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    return text.strip()
 
 
 def enforce_no_go_language(reply_text, cci_by_date):
