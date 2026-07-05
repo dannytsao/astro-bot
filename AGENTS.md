@@ -15,8 +15,8 @@
 - **Repo**：`dannytsao/astro-bot`
 - **部署**：Render（Web Service，Flask Webhook，24 小時持續運行）
 - **語言**：Python 3
-- **主要檔案**：`main.py`（單檔架構）
-- **備份**：`main_telegram.py`（舊版 Telegram 實作，保留備用）
+- **主要檔案**：`main.py`（Flask/LINE webhook、意圖解析、地點資料、回覆組裝）；輔助模組 `targets.py`（標的目錄）、`astro.py`（天文計算）、`weather.py`（氣象 API + 快取）、`cci.py`（信心指數）；測試 `tests/`
+- **備份**：`_archive/main_telegram.py`（舊版 Telegram 實作，保留備用）
 
 產品定位不是「只服務銀河攝影」，而是協助台灣攝影者判斷各類天文與天空景象是否值得出勤：
 

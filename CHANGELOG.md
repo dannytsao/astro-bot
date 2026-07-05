@@ -1,5 +1,45 @@
 # CHANGELOG
 
+## 2026-07-05（Phase 3 前置重構：模組拆分 + 可靠性強化 + 測試安全網）
+
+### 重構
+
+- **main.py 模組拆分**（3,384 行 → 2,491 行 + 4 個模組）：
+  - `targets.py`：TARGET_LIBRARY（117 標的）、METEOR_SHOWERS、MILKY_WAY_CORE（靜態天文目錄）
+  - `astro.py`：Skyfield 初始化、薄暮、月出月落、暗空窗口、銀河構圖、目標觀測窗口（純天文計算）
+  - `weather.py`：Open-Meteo、7Timer、風級換算、預報快取
+  - `cci.py`：出勤信心指數純計算（5 個 profile）
+  - `main.py` 保留 Flask/LINE webhook、意圖解析、地點資料、回覆組裝、最佳地點排名；runtime entrypoint 不變
+- **`_archive/main_telegram.py`**：舊版 Telegram 實作移入 `_archive/`，避免與 production 代碼混淆
+- 新增 `.gitignore`（`__pycache__/`、`de421.bsp`、`.claude/` 等）
+
+### 新增（測試安全網）
+
+- **pytest 測試套件 `tests/`（70 個測試）**：涵蓋標的匹配（含 m2/m20、m1/m10/m100 邊界回歸）、座標解析（含日期誤判回歸）、暗空窗口、CCI 全 profile、意圖正規化、地點審核 gate、No-Go 防線、預報快取
+- 執行方式：`python3 -m pytest tests/ -q`（已加入 dry-run gate）
+
+### 可靠性修復
+
+- **`parse_intent` 重試 + 友善降級**：LLM 回傳非法 JSON 時自動重試一次（temperature=0）；再失敗拋 `IntentParseError`，回覆使用者「我沒能看懂這個查詢」並附範例，不再露出原始 JSONDecodeError
+- **紅藍軍程式層防線 `enforce_no_go_language()`**：CCI < 40 的日期若 LLM 回覆缺少「不建議/不值得」用語，程式自動在回覆最前面加註 ❌ 出勤判定；No-Go 保證不再只靠 prompt
+- **地點審核制補強**：用戶提供座標的自定義地點改為 `review_status: "pending"`——仍可用於該用戶的直接查詢，但不進最佳地點排名、不進意圖解析地點目錄；補審核後（taiwan_locations.json 標記 approved）才全面生效。既有 Sheets 自定義地點載入時同樣標記 pending
+
+### 效能
+
+- **預報 API 快取**：Open-Meteo 與 7Timer 回應以 (座標, 日期組) 為 key 快取 30 分鐘；只快取成功結果，API 錯誤不快取。最佳地點排名與重複查詢不再重打相同 API
+- **查詢執行緒池**：`MESSAGE_EXECUTOR`（max_workers=8）取代每則訊息裸開 `threading.Thread`，流量突增時有上限保護
+
+### 雜項修正
+
+- `UNSUPPORTED_KEYWORDS` 中「凌日」重複定義（planet 與 solar_eclipse），移除重複、保留 solar_eclipse 分類（維持既有生效行為）
+- `save_custom_location` 內區域變數 `ts` 改名 `ts_str`，避免遮蔽 skyfield timescale
+
+### 流程改善
+
+- Dry Run Gate 更新：py_compile 涵蓋全部 5 個模組 + 必跑 pytest（見 `HERMAS_AGENT.md`）
+
+---
+
 ## 2026-06-21（方案 B+A1+A2：完整 Messier 目錄 + 未命中目標回覆改善）
 
 ### 新增（方案 B）

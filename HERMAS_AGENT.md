@@ -11,7 +11,7 @@
 - Health check: `https://astro-bot-web-xlny.onrender.com/healthz`
 - Runtime entrypoint: `main.py`
 - Render import fallback: `app.py`
-- Legacy backup: `main_telegram.py`
+- Legacy backup: `_archive/main_telegram.py`
 
 ## 工作原則
 
@@ -28,10 +28,13 @@
 部署前至少執行：
 
 ```bash
-PYTHONPYCACHEPREFIX=/tmp/astro-bot-pycache python3 -m py_compile main.py
+PYTHONPYCACHEPREFIX=/tmp/astro-bot-pycache python3 -m py_compile main.py targets.py astro.py weather.py cci.py
+python3 -m pytest tests/ -q
 git diff --check
 git status --short --branch
 ```
+
+pytest 為必跑項目；任何測試失敗不得 commit/push/deploy。首次執行 pytest 會自動下載 `de421.bsp`（約 17MB，已列入 `.gitignore`）。
 
 若變更影響 LINE webhook、Google Sheets、Render 環境變數或外部 API，還要補充對應檢查：
 
@@ -193,6 +196,7 @@ python3 ~/.codex/skills/taiwan-location-research/scripts/validate_locations.py d
 | 日期 | 缺口描述 | 補充內容 |
 | --- | --- | --- |
 | 2026-06-21 | 無文件管理流程規範，agent 不知道各文件職責分工與更新時機 | 新增「文件管理流程」與「流程改善」區塊 |
+| 2026-07-05 | 無自動化測試，匹配類 bug 反覆出現且 dry-run gate 只做 py_compile | main.py 拆分為 5 個模組；新增 `tests/` pytest 套件並列為 dry-run gate 必跑項目 |
 
 ---
 

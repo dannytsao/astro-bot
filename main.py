@@ -1,10 +1,9 @@
-import hashlib, http.client, math, requests, json, re, logging, os, threading, traceback
+import hashlib, http.client, requests, json, re, logging, os, traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime, timedelta, timezone, date
 from pathlib import Path
-from skyfield.api import Star, wgs84, load
-from skyfield import almanac
+from skyfield.api import wgs84
 from flask import Flask, request, abort, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
@@ -433,726 +432,19 @@ def mark_message_as_read(mark_as_read_token):
         print(f"[已讀錯誤] {type(e).__name__}: {e}", flush=True)
     return False
 
-# ── Skyfield 初始化 ────────────────────────────────────────────
-
-ts  = load.timescale()
-eph = load("de421.bsp")
-
-# ── 標的資料庫 ────────────────────────────────────────────────
-
-TARGET_LIBRARY = [
-    # min_focal_mm: 建議最短焦距  tracking_required: no/optional/recommended/required  difficulty: 1-4
-    # aliases: LLM 可能回傳的別名，用於 match_targets 模糊匹配
-    {"name":"銀河核心",          "ra_hours":17.761,  "dec_degrees":-29.0,  "type":"galaxy",        "min_alt":15,"max_alt":60, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["銀河","milky way","milkyway","銀河系中心"]},
-    {"name":"獵戶座",            "ra_hours":84.05/15,"dec_degrees":-1.20,  "type":"constellation", "min_alt":10,"max_alt":50, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["orion","獵戶"]},
-    {"name":"天蠍座",            "ra_hours":16.49,   "dec_degrees":-26.43, "type":"constellation", "min_alt":10,"max_alt":50, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["scorpius","scorpio","天蠍"]},
-    {"name":"獅子座",            "ra_hours":10.14,   "dec_degrees":11.97,  "type":"constellation", "min_alt":10,"max_alt":70, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["leo","獅子"]},
-    {"name":"仙女座",            "ra_hours":0.712,   "dec_degrees":41.27,  "type":"constellation", "min_alt":10,"max_alt":80, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["andromeda","仙女"]},
-    {"name":"南十字座",          "ra_hours":12.45,   "dec_degrees":-60.0,  "type":"constellation", "min_alt":5, "max_alt":30, "min_focal_mm":14,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["crux","southern cross","南十字","十字架","南十字星"]},
-    {"name":"獵戶座大星雲 M42",  "ra_hours":5.588,   "dec_degrees":-5.39,  "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":50,  "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m42","orion nebula","大星雲","獵戶星雲"]},
-    {"name":"玫瑰星雲 NGC2244",  "ra_hours":6.532,   "dec_degrees":4.95,   "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["ngc2244","rose nebula","ngc 2244","玫瑰"]},
-    {"name":"礁湖星雲 M8",       "ra_hours":18.063,  "dec_degrees":-24.38, "type":"nebula",        "min_alt":10,"max_alt":50, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m8","lagoon nebula","礁湖"]},
-    {"name":"鷹星雲 M16",        "ra_hours":18.313,  "dec_degrees":-13.79, "type":"nebula",        "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m16","eagle nebula","鷹"]},
-    {"name":"猴頭星雲 NGC2174",  "ra_hours":6.092,   "dec_degrees":20.30,  "type":"nebula",        "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["ngc2174","monkey head","猴頭","ngc 2174"]},
-    {"name":"昆蟲星雲 NGC6302",  "ra_hours":17.225,  "dec_degrees":-37.10, "type":"nebula",        "min_alt":8, "max_alt":40, "min_focal_mm":500, "tracking_required":"required",    "difficulty":4,
-     "aliases":["ngc6302","bug nebula","butterfly nebula","昆蟲","蝴蝶星雲","ngc 6302"]},
-    {"name":"仙女座星系 M31",    "ra_hours":0.712,   "dec_degrees":41.27,  "type":"nebula",        "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"required",    "difficulty":2,
-     "aliases":["m31","andromeda galaxy","仙女星系","仙女座大星系","仙女大星雲"]},
-    {"name":"鬼宿星團 M44",      "ra_hours":8.673,   "dec_degrees":19.98,  "type":"cluster",       "min_alt":10,"max_alt":70, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m44","beehive","praesepe","鬼宿星團","蜂巢星團","積尸氣","巨蟹座星團"]},
-    {"name":"紫金山-ATLAS彗星",  "ra_hours":3.20,    "dec_degrees":15.0,   "type":"comet",         "min_alt":10,"max_alt":60, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["atlas","紫金山","c/2023 a3"]},
-]
-
-# ── Messier 目錄擴充（排除已收錄 M8/M16/M31/M42/M44；跳過 M40/M73/M102）──
-# 共 90 個天體；min_focal_mm / difficulty 依 type 與視直徑設定預設值
-TARGET_LIBRARY += [
-    # ── 冬季天體 ──────────────────────────────────────────────────
-    {"name":"蟹狀星雲 M1",       "ra_hours":5.576,   "dec_degrees":22.01,  "type":"nebula",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m1","crab nebula","蟹狀星雲","超新星殘骸"]},
-    {"name":"梅安星雲 M43",      "ra_hours":5.593,   "dec_degrees":-5.27,  "type":"nebula",   "min_alt":10,"max_alt":60, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m43","de mairan nebula","梅安","獵戶座M43"]},
-    {"name":"昴宿星團 M45",      "ra_hours":3.788,   "dec_degrees":24.11,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m45","pleiades","七姐妹","七姐妹星團","昴星團","昴宿","subaru"]},
-    {"name":"鬼宿星雲 M78",      "ra_hours":5.779,   "dec_degrees":0.08,   "type":"nebula",   "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m78","ngc2068","mcneil nebula","反射星雲","m78反射"]},
-    {"name":"武仙球狀星團 M79",  "ra_hours":5.404,   "dec_degrees":-24.52, "type":"globular", "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m79","ngc1904"]},
-    {"name":"雙子開星團 M35",    "ra_hours":6.148,   "dec_degrees":24.33,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m35","ngc2168","雙子星團"]},
-    {"name":"御夫星團 M36",      "ra_hours":5.601,   "dec_degrees":34.13,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m36","ngc1960","御夫M36"]},
-    {"name":"御夫星團 M37",      "ra_hours":5.873,   "dec_degrees":32.55,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m37","ngc2099","御夫M37"]},
-    {"name":"御夫星團 M38",      "ra_hours":5.478,   "dec_degrees":35.85,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m38","ngc1912","御夫M38"]},
-    {"name":"大犬開星團 M41",    "ra_hours":6.783,   "dec_degrees":-20.73, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m41","ngc2287","大犬星團"]},
-    {"name":"船尾開星團 M46",    "ra_hours":7.697,   "dec_degrees":-14.82, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m46","ngc2437","船尾M46"]},
-    {"name":"船尾開星團 M47",    "ra_hours":7.611,   "dec_degrees":-14.48, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m47","ngc2422","船尾M47"]},
-    {"name":"長蛇開星團 M48",    "ra_hours":8.233,   "dec_degrees":-5.80,  "type":"cluster",  "min_alt":10,"max_alt":60, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m48","ngc2548"]},
-    {"name":"麒麟開星團 M50",    "ra_hours":7.050,   "dec_degrees":-8.37,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m50","ngc2323","麒麟M50"]},
-    {"name":"船尾開星團 M93",    "ra_hours":7.742,   "dec_degrees":-23.85, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m93","ngc2447","船尾M93"]},
-
-    # ── 春季天體 ──────────────────────────────────────────────────
-    {"name":"波德星系 M81",      "ra_hours":9.926,   "dec_degrees":69.07,  "type":"galaxy",   "min_alt":10,"max_alt":46, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m81","ngc3031","bode galaxy","波德","bode's galaxy"]},
-    {"name":"雪茄星系 M82",      "ra_hours":9.926,   "dec_degrees":69.68,  "type":"galaxy",   "min_alt":10,"max_alt":46, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m82","ngc3034","cigar galaxy","雪茄","cigar"]},
-    {"name":"獅子星系 M65",      "ra_hours":11.315,  "dec_degrees":13.10,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m65","ngc3623","leo triplet","獅子三重奏"]},
-    {"name":"獅子星系 M66",      "ra_hours":11.336,  "dec_degrees":12.98,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m66","ngc3627","leo triplet","獅子三重奏"]},
-    {"name":"室女星系 M49",      "ra_hours":12.497,  "dec_degrees":8.00,   "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m49","ngc4472","室女M49"]},
-    {"name":"貓頭鷹星雲 M97",    "ra_hours":11.248,  "dec_degrees":55.02,  "type":"nebula",   "min_alt":10,"max_alt":60, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m97","ngc3587","owl nebula","貓頭鷹","owl"]},
-    {"name":"長蛇星系 M83",      "ra_hours":13.617,  "dec_degrees":-29.87, "type":"galaxy",   "min_alt":10,"max_alt":36, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m83","ngc5236","southern pinwheel","南風車","南風車星系"]},
-    {"name":"球狀星團 M53",      "ra_hours":13.215,  "dec_degrees":18.17,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m53","ngc5024","後發M53"]},
-    {"name":"草帽星系 M104",     "ra_hours":12.666,  "dec_degrees":-11.62, "type":"galaxy",   "min_alt":10,"max_alt":55, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m104","ngc4594","sombrero","草帽","sombrero galaxy"]},
-    {"name":"黑眼星系 M64",      "ra_hours":12.946,  "dec_degrees":21.68,  "type":"galaxy",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m64","ngc4826","black eye galaxy","黑眼","sleeping beauty"]},
-    {"name":"室女星系 M87",      "ra_hours":12.514,  "dec_degrees":12.39,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m87","ngc4486","virgo a","室女A","黑洞星系","virgo cluster"]},
-    {"name":"室女星系 M58",      "ra_hours":12.629,  "dec_degrees":11.82,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m58","ngc4579","室女M58"]},
-    {"name":"室女星系 M84",      "ra_hours":12.418,  "dec_degrees":12.89,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m84","ngc4374","室女M84","馬卡良鏈"]},
-    {"name":"室女星系 M86",      "ra_hours":12.436,  "dec_degrees":12.95,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m86","ngc4406","室女M86","馬卡良鏈"]},
-    {"name":"室女星系 M89",      "ra_hours":12.593,  "dec_degrees":12.56,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m89","ngc4552","室女M89"]},
-    {"name":"室女星系 M90",      "ra_hours":12.616,  "dec_degrees":13.16,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m90","ngc4569","室女M90"]},
-    {"name":"長蛇球狀星團 M68",  "ra_hours":12.657,  "dec_degrees":-26.74, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m68","ngc4590","長蛇M68"]},
-    {"name":"獵犬星系 M51",      "ra_hours":13.498,  "dec_degrees":47.20,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m51","ngc5194","whirlpool galaxy","渦狀星系","渦狀"]},
-    {"name":"獵犬星系 M63",      "ra_hours":13.264,  "dec_degrees":42.03,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m63","ngc5055","sunflower galaxy","向日葵","向日葵星系"]},
-    {"name":"獵犬星系 M94",      "ra_hours":12.851,  "dec_degrees":41.12,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m94","ngc4736","獵犬M94","croc's eye"]},
-    {"name":"風車星系 M101",     "ra_hours":14.053,  "dec_degrees":54.35,  "type":"galaxy",   "min_alt":10,"max_alt":58, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
-     "aliases":["m101","ngc5457","pinwheel galaxy","風車星系","pinwheel"]},
-    {"name":"大熊星系 M106",     "ra_hours":12.316,  "dec_degrees":47.30,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
-     "aliases":["m106","ngc4258","大熊M106"]},
-    {"name":"大熊星系 M108",     "ra_hours":11.192,  "dec_degrees":55.67,  "type":"galaxy",   "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m108","ngc3556","大熊M108"]},
-    {"name":"大熊星系 M109",     "ra_hours":11.960,  "dec_degrees":53.38,  "type":"galaxy",   "min_alt":10,"max_alt":60, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m109","ngc3992","大熊M109"]},
-    {"name":"球狀星團 M3",       "ra_hours":13.703,  "dec_degrees":28.38,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m3","ngc5272","獵犬M3"]},
-    {"name":"武仙球狀星團 M13",  "ra_hours":16.695,  "dec_degrees":36.46,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m13","ngc6205","hercules cluster","武仙座大球狀星團","大力神星團"]},
-    {"name":"武仙球狀星團 M92",  "ra_hours":17.285,  "dec_degrees":43.14,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m92","ngc6341","武仙M92"]},
-
-    # ── 夏季天體 ──────────────────────────────────────────────────
-    {"name":"三裂星雲 M20",      "ra_hours":18.039,  "dec_degrees":-23.03, "type":"nebula",   "min_alt":10,"max_alt":45, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m20","trifid nebula","三裂","trifid"]},
-    {"name":"礁湖周邊星團 M21",  "ra_hours":18.076,  "dec_degrees":-22.50, "type":"cluster",  "min_alt":10,"max_alt":45, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m21","ngc6531","射手M21"]},
-    {"name":"人馬星雲 M24",      "ra_hours":18.283,  "dec_degrees":-18.40, "type":"nebula",   "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m24","sagittarius star cloud","人馬星雲","銀河星雲","射手星雲"]},
-    {"name":"歐米茄星雲 M17",    "ra_hours":18.346,  "dec_degrees":-16.18, "type":"nebula",   "min_alt":10,"max_alt":50, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m17","ngc6618","omega nebula","swan nebula","天鵝星雲","歐米茄","射手M17"]},
-    {"name":"蝴蝶星團 M6",       "ra_hours":17.668,  "dec_degrees":-32.15, "type":"cluster",  "min_alt":10,"max_alt":35, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m6","ngc6405","butterfly cluster","蝴蝶星團"]},
-    {"name":"托勒密星團 M7",     "ra_hours":17.900,  "dec_degrees":-34.82, "type":"cluster",  "min_alt":10,"max_alt":33, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m7","ngc6475","ptolemy cluster","托勒密","ptolemy"]},
-    {"name":"射手開星團 M18",    "ra_hours":18.333,  "dec_degrees":-17.08, "type":"cluster",  "min_alt":10,"max_alt":50, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m18","ngc6613","射手M18"]},
-    {"name":"射手開星團 M23",    "ra_hours":17.950,  "dec_degrees":-19.02, "type":"cluster",  "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m23","ngc6494","射手M23"]},
-    {"name":"射手開星團 M25",    "ra_hours":18.527,  "dec_degrees":-19.25, "type":"cluster",  "min_alt":10,"max_alt":48, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m25","ic4725","射手M25"]},
-    {"name":"盾牌野鴨星團 M11",  "ra_hours":18.851,  "dec_degrees":-6.27,  "type":"cluster",  "min_alt":10,"max_alt":58, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m11","ngc6705","wild duck cluster","野鴨星團","wild duck"]},
-    {"name":"蛇夫球狀星團 M9",   "ra_hours":17.319,  "dec_degrees":-18.52, "type":"globular", "min_alt":10,"max_alt":48, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m9","ngc6333","蛇夫M9"]},
-    {"name":"蛇夫球狀星團 M10",  "ra_hours":16.952,  "dec_degrees":-4.10,  "type":"globular", "min_alt":10,"max_alt":62, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m10","ngc6254","蛇夫M10"]},
-    {"name":"蛇夫球狀星團 M12",  "ra_hours":16.787,  "dec_degrees":-1.95,  "type":"globular", "min_alt":10,"max_alt":63, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m12","ngc6218","蛇夫M12"]},
-    {"name":"蛇夫球狀星團 M14",  "ra_hours":17.626,  "dec_degrees":-3.25,  "type":"globular", "min_alt":10,"max_alt":62, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m14","ngc6402","蛇夫M14"]},
-    {"name":"天蠍球狀星團 M4",   "ra_hours":16.393,  "dec_degrees":-26.53, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m4","ngc6121","天蠍M4","心宿旁球狀"]},
-    {"name":"天蠍球狀星團 M80",  "ra_hours":16.284,  "dec_degrees":-22.98, "type":"globular", "min_alt":10,"max_alt":44, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m80","ngc6093","天蠍M80"]},
-    {"name":"蛇夫球狀星團 M19",  "ra_hours":17.043,  "dec_degrees":-26.27, "type":"globular", "min_alt":10,"max_alt":40, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m19","ngc6273","蛇夫M19"]},
-    {"name":"天蠍球狀星團 M62",  "ra_hours":17.021,  "dec_degrees":-30.12, "type":"globular", "min_alt":10,"max_alt":36, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m62","ngc6266","天蠍M62"]},
-    {"name":"蛇夫球狀星團 M107", "ra_hours":16.542,  "dec_degrees":-13.05, "type":"globular", "min_alt":10,"max_alt":52, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m107","ngc6171","蛇夫M107"]},
-    {"name":"射手球狀星團 M22",  "ra_hours":18.607,  "dec_degrees":-23.90, "type":"globular", "min_alt":10,"max_alt":44, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m22","ngc6656","射手M22","人馬球狀"]},
-    {"name":"射手球狀星團 M28",  "ra_hours":18.409,  "dec_degrees":-24.87, "type":"globular", "min_alt":10,"max_alt":43, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m28","ngc6626","射手M28"]},
-    {"name":"射手球狀星團 M69",  "ra_hours":18.523,  "dec_degrees":-32.35, "type":"globular", "min_alt":12,"max_alt":35, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
-     "aliases":["m69","ngc6637","射手M69"]},
-    {"name":"射手球狀星團 M70",  "ra_hours":18.722,  "dec_degrees":-32.30, "type":"globular", "min_alt":12,"max_alt":35, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":3,
-     "aliases":["m70","ngc6681","射手M70"]},
-    {"name":"遠距球狀星團 M54",  "ra_hours":18.917,  "dec_degrees":-30.48, "type":"globular", "min_alt":12,"max_alt":36, "min_focal_mm":200, "tracking_required":"required",    "difficulty":4,
-     "aliases":["m54","ngc6715","射手M54","人馬矮星系球狀"]},
-    {"name":"射手星系 M55",      "ra_hours":19.667,  "dec_degrees":-30.97, "type":"globular", "min_alt":12,"max_alt":36, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":2,
-     "aliases":["m55","ngc6809","射手M55"]},
-    {"name":"巨蛇球狀星團 M5",   "ra_hours":15.309,  "dec_degrees":2.08,   "type":"globular", "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m5","ngc5904","巨蛇M5","巨蛇球狀"]},
-    {"name":"啞鈴星雲 M27",      "ra_hours":19.994,  "dec_degrees":22.72,  "type":"nebula",   "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m27","ngc6853","dumbbell nebula","啞鈴","哑铃星云","狐狸座行星狀"]},
-    {"name":"天琴環狀星雲 M57",  "ra_hours":18.893,  "dec_degrees":33.03,  "type":"nebula",   "min_alt":10,"max_alt":80, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m57","ngc6720","ring nebula","環狀星雲","戒指星雲","ring"]},
-    {"name":"天琴球狀星團 M56",  "ra_hours":19.275,  "dec_degrees":30.18,  "type":"globular", "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m56","ngc6779","天琴M56"]},
-    {"name":"飛馬球狀星團 M15",  "ra_hours":21.499,  "dec_degrees":12.17,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m15","ngc7078","飛馬M15","大力神M15"]},
-    {"name":"天鵝開星團 M39",    "ra_hours":21.533,  "dec_degrees":48.43,  "type":"cluster",  "min_alt":10,"max_alt":70, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m39","ngc7092","天鵝M39","天鵝座星團"]},
-
-    # ── 秋季天體 ──────────────────────────────────────────────────
-    {"name":"水瓶球狀星團 M2",   "ra_hours":21.558,  "dec_degrees":-0.82,  "type":"globular", "min_alt":10,"max_alt":65, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m2","ngc7089","水瓶M2"]},
-    {"name":"摩羯球狀星團 M30",  "ra_hours":21.672,  "dec_degrees":-23.18, "type":"globular", "min_alt":10,"max_alt":45, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m30","ngc7099","摩羯M30"]},
-    {"name":"水瓶球狀星團 M72",  "ra_hours":20.891,  "dec_degrees":-12.53, "type":"globular", "min_alt":10,"max_alt":55, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m72","ngc6981","水瓶M72"]},
-    {"name":"人馬開星團 M26",    "ra_hours":18.755,  "dec_degrees":-9.40,  "type":"cluster",  "min_alt":10,"max_alt":57, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":2,
-     "aliases":["m26","ngc6694","盾牌M26"]},
-    {"name":"三角座星系 M33",    "ra_hours":1.564,   "dec_degrees":30.66,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"recommended", "difficulty":4,
-     "aliases":["m33","ngc598","triangulum galaxy","三角星系","風車星系M33","pinwheel m33"]},
-    {"name":"仙女座矮星系 M32",  "ra_hours":0.712,   "dec_degrees":40.87,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m32","ngc221","仙女矮星系","仙女M32"]},
-    {"name":"仙女矮橢圓星系 M110","ra_hours":0.672,  "dec_degrees":41.68,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":2,
-     "aliases":["m110","ngc205","仙女M110","仙女座衛星星系"]},
-    {"name":"英仙開星團 M34",    "ra_hours":2.703,   "dec_degrees":42.78,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m34","ngc1039","英仙M34"]},
-    {"name":"英仙開星團 M76",    "ra_hours":1.706,   "dec_degrees":51.58,  "type":"nebula",   "min_alt":10,"max_alt":65, "min_focal_mm":300, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m76","ngc650","little dumbbell","小啞鈴星雲","小花生"]},
-    {"name":"鯨魚星系 M77",      "ra_hours":2.711,   "dec_degrees":-0.01,  "type":"galaxy",   "min_alt":10,"max_alt":65, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m77","ngc1068","cetus a","鯨魚M77"]},
-    {"name":"仙后開星團 M52",    "ra_hours":23.404,  "dec_degrees":61.58,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m52","ngc7654","仙后M52"]},
-    {"name":"仙后開星團 M103",   "ra_hours":1.556,   "dec_degrees":60.65,  "type":"cluster",  "min_alt":10,"max_alt":55, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m103","ngc581","仙后M103"]},
-    {"name":"天箭球狀星團 M71",  "ra_hours":19.896,  "dec_degrees":18.78,  "type":"globular", "min_alt":10,"max_alt":75, "min_focal_mm":100, "tracking_required":"recommended", "difficulty":2,
-     "aliases":["m71","ngc6838","天箭M71"]},
-    {"name":"寶瓶球狀星團 M75",  "ra_hours":20.101,  "dec_degrees":-21.92, "type":"globular", "min_alt":10,"max_alt":45, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m75","ngc6864","射手M75"]},
-    {"name":"幻影星系 M74",      "ra_hours":1.611,   "dec_degrees":15.78,  "type":"galaxy",   "min_alt":10,"max_alt":80, "min_focal_mm":200, "tracking_required":"required",    "difficulty":4,
-     "aliases":["m74","ngc628","phantom galaxy","幻影","fish galaxy"]},
-    {"name":"天鵝開星團 M29",    "ra_hours":20.396,  "dec_degrees":38.52,  "type":"cluster",  "min_alt":10,"max_alt":80, "min_focal_mm":50,  "tracking_required":"optional",    "difficulty":1,
-     "aliases":["m29","ngc6913","天鵝M29"]},
-
-    # ── 其他天體（補遺）────────────────────────────────────────────
-    {"name":"巨蟹開星團 M67",    "ra_hours":8.842,   "dec_degrees":11.82,  "type":"cluster",  "min_alt":10,"max_alt":73, "min_focal_mm":100, "tracking_required":"optional",    "difficulty":2,
-     "aliases":["m67","ngc2682","巨蟹M67","ngc 2682"]},
-    {"name":"室女星系 M85",      "ra_hours":12.423,  "dec_degrees":18.18,  "type":"galaxy",   "min_alt":10,"max_alt":75, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m85","ngc4382","後發M85"]},
-    {"name":"室女星系 M88",      "ra_hours":12.533,  "dec_degrees":14.42,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m88","ngc4501","室女M88"]},
-    {"name":"室女星系 M91",      "ra_hours":12.591,  "dec_degrees":14.50,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m91","ngc4548","室女M91"]},
-    {"name":"室女星系 M98",      "ra_hours":12.231,  "dec_degrees":14.90,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m98","ngc4192","室女M98"]},
-    {"name":"室女星系 M99",      "ra_hours":12.313,  "dec_degrees":14.42,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m99","ngc4254","pinwheel m99","室女M99"]},
-    {"name":"室女星系 M100",     "ra_hours":12.384,  "dec_degrees":15.82,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m100","ngc4321","室女M100"]},
-    {"name":"室女星系 M59",      "ra_hours":12.700,  "dec_degrees":11.65,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m59","ngc4621","室女M59"]},
-    {"name":"室女星系 M60",      "ra_hours":12.727,  "dec_degrees":11.55,  "type":"galaxy",   "min_alt":10,"max_alt":70, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m60","ngc4649","室女M60"]},
-    {"name":"室女星系 M61",      "ra_hours":12.365,  "dec_degrees":4.47,   "type":"galaxy",   "min_alt":10,"max_alt":67, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m61","ngc4303","室女M61"]},
-    {"name":"獅子星系 M95",      "ra_hours":10.737,  "dec_degrees":11.70,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m95","ngc3351","獅子M95"]},
-    {"name":"獅子星系 M96",      "ra_hours":10.780,  "dec_degrees":11.82,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m96","ngc3368","獅子M96"]},
-    {"name":"獅子星系 M105",     "ra_hours":10.797,  "dec_degrees":12.58,  "type":"galaxy",   "min_alt":10,"max_alt":73, "min_focal_mm":200, "tracking_required":"required",    "difficulty":3,
-     "aliases":["m105","ngc3379","獅子M105"]},
-]
-
-# 去除萬一出現的重複 name（防禦性）
-_seen_names = set()
-_deduped = []
-for _t in TARGET_LIBRARY:
-    if _t["name"] not in _seen_names:
-        _seen_names.add(_t["name"])
-        _deduped.append(_t)
-TARGET_LIBRARY = _deduped
-
-METEOR_SHOWERS = [
-    {"name":"象限儀座流星雨","peak_month":1,  "peak_day":4,  "zenithal_hourly_rate":120},
-    {"name":"英仙座流星雨", "peak_month":8,  "peak_day":12, "zenithal_hourly_rate":100},
-    {"name":"雙子座流星雨", "peak_month":12, "peak_day":14, "zenithal_hourly_rate":150},
-    {"name":"獅子座流星雨", "peak_month":11, "peak_day":17, "zenithal_hourly_rate":15},
-    {"name":"天琴座流星雨", "peak_month":4,  "peak_day":22, "zenithal_hourly_rate":18},
-]
-
-# ── 輔助函式 ──────────────────────────────────────────────────
-
-def az_to_direction(az_deg):
-    dirs = ["正北","東北","正東","東南","正南","西南","正西","西北"]
-    idx = round(az_deg / 45) % 8
-    return dirs[idx]
-
-def get_moon_phase_emoji(p):
-    p = p % 1.0
-    if p < 0.03 or p > 0.97: return "🌑 新月（最佳拍攝）"
-    elif p < 0.22:            return "🌒 眉月（尚可）"
-    elif p < 0.28:            return "🌓 上弦月（有干擾）"
-    elif p < 0.47:            return "🌔 盈凸月（明顯干擾）"
-    elif p < 0.53:            return "🌕 滿月（深空不宜）"
-    elif p < 0.72:            return "🌖 虧凸月（明顯干擾）"
-    elif p < 0.78:            return "🌗 下弦月（有干擾）"
-    else:                     return "🌘 殘月（尚可）"
-
-def check_meteor_shower(query_date):
-    results = []
-    for shower in METEOR_SHOWERS:
-        peak = date(query_date.year, shower["peak_month"], shower["peak_day"])
-        if abs((query_date - peak).days) <= 3:
-            results.append({**shower, "days_to_peak": (peak - query_date).days})
-    return results
-
-# ── 天文薄暮時刻計算 ──────────────────────────────────────────
-
-def get_astronomical_twilight(observer, query_date):
-    tz_tst = timezone(timedelta(hours=8))
-    try:
-        t0 = ts.from_datetime(datetime(query_date.year, query_date.month, query_date.day,
-                                        4, 0, tzinfo=timezone.utc))
-        t1 = ts.from_datetime(datetime(query_date.year, query_date.month, query_date.day,
-                                        4, 0, tzinfo=timezone.utc) + timedelta(days=1))
-        f = almanac.dark_twilight_day(eph, observer)
-        times, events = almanac.find_discrete(t0, t1, f)
-        evening_astro = None
-        morning_astro = None
-        for t, e in zip(times, events):
-            dt_tst = t.astimezone(tz_tst)
-            hour = dt_tst.hour + dt_tst.minute / 60
-            if e == 0 and hour > 15:
-                evening_astro = dt_tst
-            elif e == 1 and hour < 12:
-                morning_astro = dt_tst
-        return {
-            "evening_astro_twilight": evening_astro,
-            "morning_astro_twilight": morning_astro,
-        }
-    except Exception as e:
-        print(f"[薄暮計算錯誤] {e}", flush=True)
-        return {"evening_astro_twilight": None, "morning_astro_twilight": None}
-
-# ── 月出月落計算 ───────────────────────────────────────────────
-
-def get_moon_rise_set(observer, query_date):
-    tz_tst = timezone(timedelta(hours=8))
-    try:
-        t0 = ts.from_datetime(datetime(query_date.year, query_date.month, query_date.day,
-                                        4, 0, tzinfo=timezone.utc))
-        t1 = ts.from_datetime(datetime(query_date.year, query_date.month, query_date.day,
-                                        4, 0, tzinfo=timezone.utc) + timedelta(days=1))
-        f = almanac.risings_and_settings(eph, eph['moon'], observer)
-        times, events = almanac.find_discrete(t0, t1, f)
-        moonrise = moonset = None
-        moonrise_az = moonset_az = None
-        for t, e in zip(times, events):
-            dt_tst = t.astimezone(tz_tst)
-            astrometric = (eph['earth'] + observer).at(t).observe(eph['moon']).apparent()
-            _, az, _ = astrometric.altaz()
-            az_deg = round(az.degrees, 1)
-            if e == 1 and moonrise is None:
-                moonrise    = dt_tst
-                moonrise_az = az_deg
-            elif e == 0 and moonset is None:
-                moonset    = dt_tst
-                moonset_az = az_deg
-        moon_above_all_night = (moonrise is None and moonset is None and len(times) == 0)
-        astrometric_t0 = (eph['earth'] + observer).at(t0).observe(eph['moon']).apparent()
-        alt_t0, _, _ = astrometric_t0.altaz()
-        moon_above_all_night = moon_above_all_night and alt_t0.degrees > 0
-        moon_below_all_night = (moonrise is None and moonset is None and alt_t0.degrees <= 0)
-        return {
-            "moonrise": moonrise, "moonset": moonset,
-            "moonrise_az": moonrise_az, "moonset_az": moonset_az,
-            "moon_above_all_night": moon_above_all_night,
-            "moon_below_all_night": moon_below_all_night,
-        }
-    except Exception as e:
-        print(f"[月出月落計算錯誤] {e}", flush=True)
-        return {
-            "moonrise": None, "moonset": None,
-            "moonrise_az": None, "moonset_az": None,
-            "moon_above_all_night": False, "moon_below_all_night": False,
-        }
-
-# ── 有效暗空窗口計算 ───────────────────────────────────────────
-
-def compute_dark_sky_window(twilight_info, moon_info_day):
-    ev  = twilight_info.get("evening_astro_twilight")
-    mo  = twilight_info.get("morning_astro_twilight")
-    if not ev or not mo:
-        return [], "⚠️ 薄暮時刻計算失敗"
-    moonrise = moon_info_day.get("moonrise")
-    moonset  = moon_info_day.get("moonset")
-    above    = moon_info_day.get("moon_above_all_night", False)
-    below    = moon_info_day.get("moon_below_all_night", False)
-    if above:
-        return [], "🌕 整夜有月光，無有效暗空窗口"
-    if below or (moonrise is None and moonset is None):
-        duration = (mo - ev).seconds // 60
-        h, m = divmod(duration, 60)
-        desc = (f"🌑 全夜無月光\n"
-                f"  暗空窗口：{ev.strftime('%H:%M')} ～ {mo.strftime('%H:%M')} TST"
-                f"（共 {h}h{m:02d}m）")
-        return [(ev, mo)], desc
-    windows = []
-    desc_parts = []
-    moon_up_segments = []
-    if moonrise and moonset:
-        if moonrise < moonset:
-            moon_up_segments.append((moonrise, moonset))
-        else:
-            moon_up_segments.append((ev, moonset))
-            moon_up_segments.append((moonrise, mo))
-    elif moonrise and not moonset:
-        moon_up_segments.append((moonrise, mo))
-    elif moonset and not moonrise:
-        moon_up_segments.append((ev, moonset))
-    dark_intervals = [(ev, mo)]
-    for seg_start, seg_end in moon_up_segments:
-        new_intervals = []
-        for ds, de in dark_intervals:
-            if seg_end <= ds or seg_start >= de:
-                new_intervals.append((ds, de))
-                continue
-            if ds < seg_start:
-                new_intervals.append((ds, seg_start))
-            if seg_end < de:
-                new_intervals.append((seg_end, de))
-        dark_intervals = new_intervals
-    MIN_WINDOW_MIN = 30
-    for ds, de in dark_intervals:
-        dur = (de - ds).seconds // 60
-        if dur >= MIN_WINDOW_MIN:
-            windows.append((ds, de))
-            h, m = divmod(dur, 60)
-            desc_parts.append(f"  {ds.strftime('%H:%M')} ～ {de.strftime('%H:%M')} TST（{h}h{m:02d}m）")
-    if not windows:
-        moon_str = ""
-        if moonrise: moon_str += f"月出 {moonrise.strftime('%H:%M')}"
-        if moonset:  moon_str += f"{'，' if moon_str else ''}月落 {moonset.strftime('%H:%M')}"
-        return [], f"⚠️ 月光干擾嚴重，無 30 分鐘以上暗空窗口\n  （{moon_str}）"
-    total_min = sum((de - ds).seconds // 60 for ds, de in windows)
-    h_total, m_total = divmod(total_min, 60)
-    header = f"✅ 有效暗空窗口（共 {h_total}h{m_total:02d}m）："
-    desc = header + "\n" + "\n".join(desc_parts)
-    return windows, desc
-
-# ── 銀河核心方位角計算 ─────────────────────────────────────────
-
-MILKY_WAY_CORE = {"ra_hours": 17.761, "dec_degrees": -29.0}
-
-def get_milky_way_composition(observer, query_date, dark_windows):
-    if not dark_windows:
-        return None
-    mw_star = Star(ra_hours=MILKY_WAY_CORE["ra_hours"],
-                   dec_degrees=MILKY_WAY_CORE["dec_degrees"])
-    best = None
-    best_alt = -999
-    for (win_start, win_end) in dark_windows:
-        current = win_start
-        while current <= win_end:
-            t_utc = current.astimezone(timezone.utc)
-            t = ts.from_datetime(t_utc)
-            astrometric = (eph['earth'] + observer).at(t).observe(mw_star).apparent()
-            alt, az, _  = astrometric.altaz()
-            if alt.degrees > best_alt:
-                best_alt = alt.degrees
-                best = {
-                    "datetime_tst": current,
-                    "alt_deg":       round(alt.degrees, 1),
-                    "az_deg":        round(az.degrees, 1),
-                }
-            current += timedelta(minutes=10)
-    if best is None or best["alt_deg"] < 10:
-        return None
-    t_best = ts.from_datetime(best["datetime_tst"].astimezone(timezone.utc))
-    moon_astrometric = (eph['earth'] + observer).at(t_best).observe(eph['moon']).apparent()
-    moon_alt, moon_az, _ = moon_astrometric.altaz()
-    mw_az   = best["az_deg"]
-    moon_az_deg = round(moon_az.degrees, 1)
-    angle_diff = abs(mw_az - moon_az_deg)
-    if angle_diff > 180:
-        angle_diff = 360 - angle_diff
-    angle_diff = round(angle_diff, 1)
-    if moon_alt.degrees < 0:
-        moon_interference = "無干擾（月亮在地平線下）"
-    elif angle_diff >= 60:
-        moon_interference = f"低干擾（月亮在 {az_to_direction(moon_az_deg)} {moon_az_deg}°，相距 {angle_diff}°）"
-    elif angle_diff >= 30:
-        moon_interference = f"中等干擾（月亮在 {az_to_direction(moon_az_deg)} {moon_az_deg}°，相距 {angle_diff}°）"
-    else:
-        moon_interference = f"⚠️ 嚴重干擾（月亮與銀河僅相距 {angle_diff}°，構圖困難）"
-    mw_direction = az_to_direction(mw_az)
-    composition_tip = (
-        f"面向 {mw_direction}（{mw_az}°）拍攝銀河核心\n"
-        f"  仰角約 {best['alt_deg']}°，建議廣角鏡下壓地景"
-    )
-    if angle_diff < 30 and moon_alt.degrees > 0:
-        composition_tip += "\n  ⚠️ 月亮方向與銀河重疊，可等月落後再拍或嘗試縮小構圖迴避"
-    return {
-        "best_datetime":     best["datetime_tst"],
-        "mw_alt_deg":        best["alt_deg"],
-        "mw_az_deg":         mw_az,
-        "mw_direction":      mw_direction,
-        "moon_az_deg":       moon_az_deg,
-        "moon_alt_deg":      round(moon_alt.degrees, 1),
-        "moon_direction":    az_to_direction(moon_az_deg),
-        "angle_diff":        angle_diff,
-        "moon_interference": moon_interference,
-        "composition_tip":   composition_tip,
-    }
-
-# ── 原有計算邏輯 ───────────────────────────────────────────────
-
-def compute_target_windows(observer, target, query_dates, dark_windows_by_date=None):
-    star = Star(ra_hours=target["ra_hours"], dec_degrees=target["dec_degrees"])
-    windows = []
-    tz_tst = timezone(timedelta(hours=8))
-    for d in query_dates:
-        if dark_windows_by_date and d in dark_windows_by_date:
-            day_windows = dark_windows_by_date[d]
-        else:
-            day_windows = None
-
-        best_for_day = None
-
-        # ── 主要掃描：在暗空窗口內 ─────────────────────────────
-        if day_windows:
-            scan_times = []
-            for (win_start, win_end) in day_windows:
-                current = win_start
-                while current <= win_end:
-                    scan_times.append(current)
-                    current += timedelta(minutes=10)
-            for dt_tst in scan_times:
-                dt_utc = dt_tst.astimezone(timezone.utc)
-                t = ts.from_datetime(dt_utc)
-                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
-                alt, az, _ = apparent.altaz()
-                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
-                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
-                        best_for_day = {
-                            "target_name":  target["name"],
-                            "target_type":  target["type"],
-                            "datetime_tst": dt_tst,
-                            "alt_deg":      round(alt.degrees, 1),
-                            "az_deg":       round(az.degrees, 1),
-                            "in_dark_window": True,
-                        }
-
-        # ── 備用掃描：整夜 18:00–06:00，in_dark_window=False ──
-        # 觸發條件：(a) 無暗空資料，(b) 暗空窗口為空（月光干擾），
-        #           (c) 暗空窗口存在但目標在窗口內仰角不足（如夏至晚落標的）
-        if best_for_day is None:
-            fallback_times = [
-                datetime(d.year, d.month, d.day, 18, 0, tzinfo=tz_tst) + timedelta(minutes=mo)
-                for mo in range(0, 12 * 60, 10)   # 18:00 → 06:00+1day
-            ]
-            for dt_tst in fallback_times:
-                dt_utc = dt_tst.astimezone(timezone.utc)
-                t = ts.from_datetime(dt_utc)
-                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
-                alt, az, _ = apparent.altaz()
-                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
-                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
-                        best_for_day = {
-                            "target_name":  target["name"],
-                            "target_type":  target["type"],
-                            "datetime_tst": dt_tst,
-                            "alt_deg":      round(alt.degrees, 1),
-                            "az_deg":       round(az.degrees, 1),
-                            "in_dark_window": False,
-                        }
-
-        if best_for_day:
-            windows.append(best_for_day)
-    return windows
-
-
-def get_moon_info(observer, query_dates):
-    results = []
-    for d in query_dates:
-        t0 = ts.utc(d.year, d.month, d.day, 11)
-        mp = almanac.moon_phase(eph, t0)
-        moon_rs = get_moon_rise_set(observer, d)
-        twilight = get_astronomical_twilight(observer, d)
-        dark_wins, dark_desc = compute_dark_sky_window(twilight, moon_rs)
-        results.append({
-            "date":               d,
-            "moon_phase_pct":     round(float(mp.degrees) / 360.0 * 100, 1),
-            "moon_phase_desc":    get_moon_phase_emoji(float(mp.degrees) / 360.0),
-            "moonrise":           moon_rs["moonrise"],
-            "moonset":            moon_rs["moonset"],
-            "moonrise_az":        moon_rs["moonrise_az"],
-            "moonset_az":         moon_rs["moonset_az"],
-            "moon_above_all_night": moon_rs["moon_above_all_night"],
-            "moon_below_all_night": moon_rs["moon_below_all_night"],
-            "evening_twilight":   twilight["evening_astro_twilight"],
-            "morning_twilight":   twilight["morning_astro_twilight"],
-            "dark_windows":       dark_wins,
-            "dark_window_desc":   dark_desc,
-        })
-    return results
-
-def wind_kmh_to_beaufort(speed_kmh):
-    if speed_kmh is None or speed_kmh < 0:
-        return -1
-    thresholds = [1, 6, 12, 20, 29, 39, 50, 62, 75, 89, 103, 118]
-    for level, upper in enumerate(thresholds):
-        if speed_kmh < upper:
-            return level
-    return 12
-
-
-def check_weather_multi(lat, lon, query_dates):
-    if not query_dates:
-        return {}
-    today = date.today()
-    max_d = today + timedelta(days=15)
-    valid = [d for d in query_dates if today <= d <= max_d]
-    def weather_missing(reason):
-        return {
-            "cloud_cover": -1, "humidity": -1, "temp_c": -1,
-            "dew_point_c": -1, "dew_risk": False, "good_weather": False,
-            "visibility_km": -1, "wind_speed_kmh": -1, "wind_beaufort": -1,
-            "data_status": "missing",
-            "data_source": "Open-Meteo", "missing_reason": reason,
-        }
-    if not valid:
-        return {d: weather_missing("查詢日期超出 Open-Meteo 預報範圍 15 天") for d in query_dates}
-    url = (f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}"
-           f"&hourly=cloud_cover,visibility,relative_humidity_2m,temperature_2m,dew_point_2m,wind_speed_10m"
-           f"&start_date={min(valid).isoformat()}&end_date={max(valid).isoformat()}"
-           f"&timezone=Asia%2FTaipei")
-    try:
-        raw = requests.get(url, timeout=10).json()
-    except Exception as e:
-        print(f"[Open-Meteo 錯誤] {type(e).__name__}: {e}", flush=True)
-        return {d: weather_missing(f"Open-Meteo API 錯誤：{type(e).__name__}") for d in query_dates}
-    if "hourly" not in raw:
-        return {d: weather_missing("Open-Meteo 回傳缺少 hourly 資料") for d in query_dates}
-    data = raw["hourly"]
-    hi   = {}
-    for i, t_str in enumerate(data["time"]):
-        dt = datetime.fromisoformat(t_str)
-        hi[dt] = {
-            "cloud_cover": data["cloud_cover"][i],
-            "humidity":    data["relative_humidity_2m"][i],
-            "temp_c":      data["temperature_2m"][i],
-            "dew_point_c": data["dew_point_2m"][i],
-            "visibility":  data["visibility"][i],
-            "wind_speed":  data.get("wind_speed_10m", [-1] * len(data["time"]))[i],
-        }
-    daily = {}
-    for d in query_dates:
-        if d not in valid:
-            daily[d] = weather_missing("查詢日期超出 Open-Meteo 預報範圍 15 天")
-            continue
-        night = []
-        for h in [20, 21, 22, 23, 0, 1, 2]:
-            cd = d if h >= 20 else d + timedelta(days=1)
-            k  = datetime(cd.year, cd.month, cd.day, h)
-            if k in hi:
-                night.append(hi[k])
-        if night:
-            ac = round(sum(x["cloud_cover"] for x in night) / len(night), 1)
-            ah = round(sum(x["humidity"]    for x in night) / len(night), 1)
-            at = round(sum(x["temp_c"]      for x in night) / len(night), 1)
-            ad = round(sum(x["dew_point_c"] for x in night) / len(night), 1)
-            av = round(sum(x["visibility"]  for x in night) / len(night) / 1000, 1)
-            max_wind = round(max(x.get("wind_speed", -1) for x in night), 1)
-            daily[d] = {
-                "cloud_cover": ac, "humidity": ah,
-                "temp_c": at, "dew_point_c": ad,
-                "dew_risk":       (at - ad) < 1.5,
-                "good_weather":   ac <= 40,
-                "visibility_km":  av,
-                "wind_speed_kmh": max_wind,
-                "wind_beaufort":  wind_kmh_to_beaufort(max_wind),
-                "data_status":    "ok",
-                "data_source":    "Open-Meteo",
-                "missing_reason": "",
-            }
-        else:
-            daily[d] = weather_missing("Open-Meteo 回傳中缺少夜間時段資料")
-    return daily
-
-
-def get_7timer_seeing(lat, lon, query_dates):
-    def seeing_missing(reason):
-        return {
-            "seeing": -1, "transparency": -1, "data_status": "missing",
-            "data_source": "7Timer", "missing_reason": reason,
-        }
-    try:
-        url = (f"http://www.7timer.info/bin/astro.php"
-               f"?lon={lon}&lat={lat}&ac=0&unit=metric&output=json&tzoffset=8")
-        raw = requests.get(url, timeout=10).json()
-        init_dt = datetime.strptime(raw["init"], "%Y%m%d%H").replace(tzinfo=timezone.utc)
-    except Exception as e:
-        print(f"[7Timer 錯誤] {e}", flush=True)
-        return {d: seeing_missing(f"7Timer API 錯誤：{type(e).__name__}") for d in query_dates}
-    tz_tst = timezone(timedelta(hours=8))
-    hourly = {}
-    for item in raw.get("dataseries", []):
-        dt_tst = (init_dt + timedelta(hours=item["timepoint"])).astimezone(tz_tst)
-        s = item.get("seeing", -1)
-        t = item.get("transparency", -1)
-        if s > 0 and t > 0:
-            hourly[dt_tst] = {"seeing": s, "transparency": t}
-    daily = {}
-    for d in query_dates:
-        night = []
-        for dt_tst, v in hourly.items():
-            h = dt_tst.hour
-            if (dt_tst.date() == d and h >= 20) or \
-               (dt_tst.date() == d + timedelta(days=1) and h <= 2):
-                night.append(v)
-        if night:
-            daily[d] = {
-                "seeing":       round(sum(x["seeing"]       for x in night) / len(night), 1),
-                "transparency": round(sum(x["transparency"] for x in night) / len(night), 1),
-                "data_status":  "ok",
-                "data_source":  "7Timer",
-                "missing_reason": "",
-            }
-        else:
-            daily[d] = seeing_missing("7Timer 回傳中缺少夜間視寧度/透明度資料")
-    return daily
-
+# ── 拆分模組（Phase 3 前置重構）───────────────────────────────
+# 標的資料（targets）、天文計算（astro）、氣象 API（weather）、CCI（cci）
+# 已拆至獨立模組；main.py 保留 Flask/LINE webhook、意圖解析、地點資料、
+# 回覆組裝與最佳地點排名。
+from targets import TARGET_LIBRARY, METEOR_SHOWERS, MILKY_WAY_CORE
+from astro import (
+    ts, eph,
+    az_to_direction, get_moon_phase_emoji, check_meteor_shower,
+    get_astronomical_twilight, get_moon_rise_set, compute_dark_sky_window,
+    get_milky_way_composition, compute_target_windows, get_moon_info,
+)
+from weather import wind_kmh_to_beaufort, check_weather_multi, get_7timer_seeing
+from cci import _moon_illumination, compute_cci_for_date
 
 DEFAULT_KNOWN_LOCATIONS = {
     "日月潭": (23.865, 120.917),
@@ -1250,10 +542,12 @@ def load_custom_locations():
             LOCATION_DATA[name] = {
                 "lat": lat, "lon": lon, "aliases": [],
                 "source": "user-provided", "confidence": "user",
-                "review_status": "approved",
+                # 用戶提供座標未經人工審核：可用於該地點的直接查詢，
+                # 但不進入最佳地點排名與意圖解析目錄（地點審核制）
+                "review_status": "pending",
             }
             KNOWN_LOCATIONS[name] = (lat, lon)
-        print(f"[自定義地點] 已載入 {len(rows)-1} 筆用戶地點", flush=True)
+        print(f"[自定義地點] 已載入 {len(rows)-1} 筆用戶地點（pending，未進排名）", flush=True)
     except Exception as e:
         print(f"[自定義地點] 載入失敗：{describe_exception(e)}", flush=True)
 
@@ -1266,13 +560,14 @@ def save_custom_location(name, lat, lon, original_query=""):
     LOCATION_DATA[name] = {
         "lat": lat, "lon": lon, "aliases": [],
         "source": "user-provided", "confidence": "user",
-        "review_status": "approved",
+        # 未經人工審核：不進排名與意圖解析目錄，需在 taiwan_locations.json 補審後才 approved
+        "review_status": "pending",
     }
     KNOWN_LOCATIONS[name] = (lat, lon)
     if ws_locations:
         try:
-            ts = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-            ws_locations.append_row([name, str(lat), str(lon), ts, original_query[:100]])
+            ts_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
+            ws_locations.append_row([name, str(lat), str(lon), ts_str, original_query[:100]])
             print(f"[自定義地點] 已儲存：{name} ({lat}, {lon})", flush=True)
         except Exception as e:
             print(f"[自定義地點] 儲存失敗：{describe_exception(e)}", flush=True)
@@ -1283,8 +578,12 @@ def location_search_terms(name, item):
     return [name] + [alias for alias in item.get("aliases", []) if alias]
 
 def location_prompt_catalog():
+    # 只提供 approved 地點給意圖解析 LLM（pending 用戶地點不進 prompt，
+    # 避免未審核座標被擴散到其他用戶的查詢）
     entries = []
     for name, item in LOCATION_DATA.items():
+        if item.get("review_status") != "approved":
+            continue
         entries.append(f"{name}({item['lat']:.3f},{item['lon']:.3f})")
     return "，".join(entries)
 
@@ -1310,6 +609,11 @@ def format_location_resolution(intent, original_query):
 TAIWAN_LOOSE_LAT_RANGE = (20.0, 26.5)
 TAIWAN_LOOSE_LON_RANGE = (118.0, 123.8)
 AMBIGUOUS_LOCATION_TERMS = {"飛行場", "機場", "山上", "海邊", "海岸", "湖邊"}
+
+class IntentParseError(RuntimeError):
+    """LLM 意圖解析失敗（重試後仍無法取得合法 JSON）。"""
+    pass
+
 
 class LocationResolutionError(RuntimeError):
     def __init__(self, location_name, intent, message):
@@ -1582,9 +886,25 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
 已審核地名座標：{location_prompt_catalog()}。
 若地名不在清單，請只解析使用者實際輸入的地點，不可替換成清單中的其他地點。
 若地名太籠統或無法可靠估算，location_name 保留使用者輸入的地名，lat/lon 回 null。"""
-    text = call_openrouter(system, user_query, max_tokens=400)
-    text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
-    return normalize_intent(json.loads(text), user_query)
+    last_error = None
+    for attempt in range(2):
+        prompt = user_query if attempt == 0 else (
+            f"{user_query}\n\n（上次回覆不是合法 JSON。請只回覆一個合法 JSON 物件，"
+            "不加任何說明、前後綴或 markdown。）"
+        )
+        try:
+            text = call_openrouter(system, prompt, max_tokens=400,
+                                   temperature=0.2 if attempt == 0 else 0.0)
+            text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
+            parsed = json.loads(text)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"意圖解析結果不是 JSON 物件：{type(parsed).__name__}")
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            print(f"[意圖解析] 第 {attempt + 1} 次解析失敗：{describe_exception(e)}", flush=True)
+            continue
+        return normalize_intent(parsed, user_query)
+    raise IntentParseError("意圖解析失敗：LLM 未回傳合法 JSON") from last_error
 
 
 _M_NUM_RE = re.compile(r'^m\d+$')
@@ -1746,9 +1066,10 @@ UNSUPPORTED_KEYWORDS = {
     "大距": ("planet", "行星位置"),
     "衝":   ("planet", "行星位置"),
     "合月": ("planet", "行星位置"),
-    "凌日": ("planet", "行星位置"),
     "日食": ("solar_eclipse", "日食預測"),
     "日蝕": ("solar_eclipse", "日食預測"),
+    # 「凌日」原重複定義於 planet 與 solar_eclipse（dict 後者生效）；
+    # 移除重複、保留 solar_eclipse 分類以維持既有行為
     "凌日": ("solar_eclipse", "日食預測"),
     # 月蝕/月食已移出 hard-block，改為 cci_profile="lunar_eclipse" + 軟性提示
 }
@@ -1887,246 +1208,6 @@ def run_query(user_query, prefetched_intent=None):
     }
 
 
-# ── 出勤信心指數（CCI） ────────────────────────────────────────
-
-def _moon_illumination(moon_phase_pct):
-    """從 moon_phase_pct（0–100）估算月面照度比例（0–1）。
-    moon_phase_pct=0/100 → 新月 (~0%)；moon_phase_pct=50 → 滿月 (~100%)。
-    """
-    import math
-    phase_angle_deg = moon_phase_pct / 100.0 * 360.0
-    return (1.0 - math.cos(math.radians(phase_angle_deg))) / 2.0
-
-def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_date, wind_profile="milky_way",
-                         cci_profile="default", extra_data=None):
-    """每晚出勤信心指數（0–100）。純 Python 計算，不依賴 LLM。
-    cci_profile: "default" | "meteor" | "moonscape" | "lunar_eclipse" | "comet_layer1"
-    extra_data:  {"showers": [...]}  供 meteor profile 讀取 ZHR
-    """
-    if extra_data is None:
-        extra_data = {}
-    breakdown = {}
-    completeness_flags = []
-    profile_notes = []  # 附加說明給 LLM
-
-    # ── 各 profile 權重定義 ───────────────────────────────────────
-    if cci_profile == "meteor":
-        # 流星雨：雲量最重要；月亮亮度是關鍵負因子（放入 target）；視寧度次要；無需追蹤故風速寬鬆
-        W = {"cloud":0.35,"dark_window":0.08,"seeing":0.05,"transparency":0.10,"target":0.27,"dew":0.05,"wind":0.10}
-    elif cci_profile == "moonscape":
-        # 月景：月光是主角；暗空窗口反轉；透明度更重要；視寧度次要
-        W = {"cloud":0.35,"dark_window":0.05,"seeing":0.08,"transparency":0.15,"target":0.27,"dew":0.05,"wind":0.05}
-    elif cci_profile == "lunar_eclipse":
-        # 月蝕：不需要暗空；透明度最關鍵；月亮仰角（月在天上）是目標可見性
-        W = {"cloud":0.35,"dark_window":0.03,"seeing":0.10,"transparency":0.17,"target":0.25,"dew":0.05,"wind":0.05}
-    elif cci_profile == "comet_layer1":
-        # 彗星第一層：同深空，但 target 固定中性（無準確座標）
-        W = {"cloud":0.30,"dark_window":0.22,"seeing":0.13,"transparency":0.08,"target":0.10,"dew":0.05,"wind":0.12}
-    else:  # default
-        W = {"cloud":0.30,"dark_window":0.22,"seeing":0.13,"transparency":0.08,"target":0.10,"dew":0.05,"wind":0.12}
-
-    # 1. 雲量
-    weather_ok = weather_day.get("data_status") == "ok"
-    cloud = weather_day.get("cloud_cover", -1)
-    if not weather_ok or cloud < 0:
-        cloud_score, cloud_raw = 0, "氣象資料缺失"
-        completeness_flags.append("weather_missing")
-    elif cloud <= 20:  cloud_score, cloud_raw = 100, f"雲量 {cloud}%"
-    elif cloud <= 40:  cloud_score, cloud_raw = 80,  f"雲量 {cloud}%"
-    elif cloud <= 60:  cloud_score, cloud_raw = 40,  f"雲量 {cloud}%"
-    elif cloud <= 80:  cloud_score, cloud_raw = 15,  f"雲量 {cloud}%"
-    else:              cloud_score, cloud_raw = 0,   f"雲量 {cloud}%"
-    breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": W["cloud"]}
-
-    # 2. 有效暗空窗口 / 月光亮度（依 profile 調整語意）
-    moon_pct  = moon_info_day.get("moon_phase_pct", 50)
-    moon_illum = _moon_illumination(moon_pct)  # 0=新月, 1=滿月
-    dark_wins = moon_info_day.get("dark_windows", [])
-
-    if cci_profile == "moonscape":
-        # 月景：月光是主角，illumination 越高越好
-        if moon_illum >= 0.75:   dark_score, dark_raw = 100, f"月面照度 {round(moon_illum*100)}%（滿月期，絕佳月景）"
-        elif moon_illum >= 0.50: dark_score, dark_raw = 80,  f"月面照度 {round(moon_illum*100)}%（盈月期，良好）"
-        elif moon_illum >= 0.25: dark_score, dark_raw = 45,  f"月面照度 {round(moon_illum*100)}%（半月期，尚可）"
-        else:                    dark_score, dark_raw = 10,  f"月面照度 {round(moon_illum*100)}%（新月期，月景不佳）"
-        profile_notes.append("⚠️ 月景題材：月光強度為加分項，分析以月亮亮度為主，無暗空需求")
-    elif cci_profile == "lunar_eclipse":
-        # 月蝕：月亮需在天上（不需要暗空）；月蝕時月亮仰角是可見性
-        moon_above = moon_info_day.get("moon_above_all_night", False)
-        moon_below = moon_info_day.get("moon_below_all_night", False)
-        if moon_above:
-            dark_score, dark_raw = 90, "月亮整夜在天，月蝕可見"
-        elif moon_below:
-            dark_score, dark_raw = 0,  "月亮整夜低於地平，月蝕無法觀測"
-        elif dark_wins:
-            total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
-            moon_up_min = max(0, 480 - total_min)  # 估算月亮在天時間
-            dark_score = min(90, round(moon_up_min / 480 * 100))
-            dark_raw = f"月亮部分時段可見（估計 {moon_up_min} 分鐘）"
-        else:
-            dark_score, dark_raw = 50, "月亮出沒情況不明（中性）"
-        profile_notes.append("⚠️ 月蝕題材：本系統不計算月蝕時間，天況評估僅供參考；月蝕時間請查詢台北天文館或 Stellarium")
-    elif cci_profile in ("meteor", "default", "comet_layer1"):
-        # 深空/流星雨：暗空窗口長度評分（原始邏輯）
-        if not dark_wins:
-            dark_score, dark_raw = 0, "無有效暗空窗口"
-        else:
-            total_min = sum((de - ds).seconds // 60 for (ds, de) in dark_wins)
-            h, m_min = divmod(total_min, 60)
-            dark_raw = f"暗空 {h}h{m_min:02d}m" if total_min > 0 else "暗空窗口極短"
-            if total_min >= 300:   dark_score = 100
-            elif total_min >= 240: dark_score = 90
-            elif total_min >= 120: dark_score = 65
-            elif total_min >= 60:  dark_score = 35
-            elif total_min >= 30:  dark_score = 15
-            else:                  dark_score = 5
-    else:
-        dark_score, dark_raw = 50, "暗空窗口資料不明（中性）"
-    breakdown["dark_window"] = {"score": dark_score, "raw": dark_raw, "weight": W["dark_window"]}
-
-    # 3. 視寧度  7Timer: 1=最佳, 8=最差
-    seeing_ok = seeing_day.get("data_status") == "ok"
-    seeing = seeing_day.get("seeing", -1)
-    if not seeing_ok or seeing <= 0:
-        seeing_score, seeing_raw = 50, "視寧度資料缺失"
-        completeness_flags.append("seeing_missing")
-    elif seeing <= 2: seeing_score, seeing_raw = 100, f"視寧度 {seeing}/8（優）"
-    elif seeing <= 3: seeing_score, seeing_raw = 75,  f"視寧度 {seeing}/8（良）"
-    elif seeing <= 4: seeing_score, seeing_raw = 50,  f"視寧度 {seeing}/8（中）"
-    elif seeing <= 5: seeing_score, seeing_raw = 25,  f"視寧度 {seeing}/8（差）"
-    else:             seeing_score, seeing_raw = 0,   f"視寧度 {seeing}/8（很差）"
-    breakdown["seeing"] = {"score": seeing_score, "raw": seeing_raw, "weight": W["seeing"]}
-
-    # 4. 大氣透明度  7Timer: 1=最佳, 8=最差
-    transp = seeing_day.get("transparency", -1)
-    if not seeing_ok or transp <= 0:
-        transp_score, transp_raw = 50, "透明度資料缺失"
-    elif transp <= 2: transp_score, transp_raw = 100, f"透明度 {transp}/8（優）"
-    elif transp <= 3: transp_score, transp_raw = 75,  f"透明度 {transp}/8（良）"
-    elif transp <= 4: transp_score, transp_raw = 50,  f"透明度 {transp}/8（中）"
-    elif transp <= 5: transp_score, transp_raw = 25,  f"透明度 {transp}/8（差）"
-    else:             transp_score, transp_raw = 0,   f"透明度 {transp}/8（很差）"
-    breakdown["transparency"] = {"score": transp_score, "raw": transp_raw, "weight": W["transparency"]}
-
-    # 5. 目標天體可見性（依 profile 調整語意）
-    if cci_profile == "meteor":
-        # 流星雨：月面照度是最大干擾因子；ZHR 決定值得程度
-        if moon_illum <= 0.10:   target_score = 100
-        elif moon_illum <= 0.25: target_score = 80
-        elif moon_illum <= 0.50: target_score = 55
-        elif moon_illum <= 0.75: target_score = 25
-        else:                    target_score = 8
-        showers = extra_data.get("showers", [])
-        if showers:
-            peak = max(showers, key=lambda s: s["zenithal_hourly_rate"])
-            zhr  = peak["zenithal_hourly_rate"]
-            days = abs(peak.get("days_to_peak", 3))
-            zhr_label = f"ZHR {zhr}"
-            if zhr >= 100 and days == 0:   target_score = min(100, target_score + 20)
-            elif zhr >= 100 and days <= 1: target_score = min(100, target_score + 10)
-            elif zhr >= 50:                target_score = min(100, target_score + 5)
-            target_raw = f"月面照度 {round(moon_illum*100)}%（干擾）・{zhr_label}・距極大 {days:+d}天"
-        else:
-            target_raw = f"月面照度 {round(moon_illum*100)}%（干擾）・無已知極大期"
-        profile_notes.append("⚠️ 流星雨題材：目標可見性以月面照度為主要干擾因子；ZHR 為靜態歷史值，實際流量可能有差異")
-    elif cci_profile == "moonscape":
-        # 月景：月光強度即是目標可見性（同 dark_window 邏輯但獨立計分）
-        if moon_illum >= 0.75:   target_score, target_raw = 100, f"月面照度 {round(moon_illum*100)}%（滿月，月景最強）"
-        elif moon_illum >= 0.50: target_score, target_raw = 80,  f"月面照度 {round(moon_illum*100)}%（盈月）"
-        elif moon_illum >= 0.25: target_score, target_raw = 45,  f"月面照度 {round(moon_illum*100)}%（半月）"
-        else:                    target_score, target_raw = 10,  f"月面照度 {round(moon_illum*100)}%（新月期，月景不適合）"
-    elif cci_profile == "lunar_eclipse":
-        # 月蝕：月亮在天上即可；月蝕時間另行查詢
-        moon_above = moon_info_day.get("moon_above_all_night", False)
-        moon_below = moon_info_day.get("moon_below_all_night", False)
-        if moon_above:
-            target_score, target_raw = 90, "月亮整夜可觀測，天況條件充足"
-        elif moon_below:
-            target_score, target_raw = 0,  "月亮整夜低於地平，月蝕無法觀測"
-        else:
-            target_score, target_raw = 60, "月亮部分時段可見"
-    elif cci_profile == "comet_layer1":
-        # 彗星第一層：無準確位置，給中性分數
-        target_score, target_raw = 50, "彗星位置資料缺失（靜態座標），以中性值計算"
-        profile_notes.append("⚠️ 彗星題材（第一層）：本評估僅提供天況 CCI，不含彗星方位角；位置請自行查詢 Stellarium 或 JPL Horizons")
-    else:
-        # default：原始暗空窗口邏輯
-        in_dark = any(w.get("in_dark_window", False) for w in windows_for_date)
-        has_win  = len(windows_for_date) > 0
-        if in_dark:   target_score, target_raw = 100, "暗空窗口內可見"
-        elif has_win: target_score, target_raw = 50,  "僅月光時段可見"
-        else:         target_score, target_raw = 0,   "目標不可見"
-    breakdown["target"] = {"score": target_score, "raw": target_raw, "weight": W["target"]}
-
-    # 6. 結露 / 起霧風險
-    if not weather_ok:
-        dew_score, dew_raw = 80, "結露資料缺失"
-    else:
-        temp   = weather_day.get("temp_c")
-        dew_pt = weather_day.get("dew_point_c")
-        if temp is None or dew_pt is None:
-            dew_score, dew_raw = 80, "結露資料缺失"
-        else:
-            diff = temp - dew_pt
-            if diff >= 3.0:   dew_score, dew_raw = 100, f"T−Td={diff:.1f}°C（安全）"
-            elif diff >= 1.5: dew_score, dew_raw = 50,  f"T−Td={diff:.1f}°C（注意）"
-            else:             dew_score, dew_raw = 0,   f"T−Td={diff:.1f}°C（高風險）"
-    breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": W["dew"]}
-
-    # 7. 風速穩定性
-    # 流星雨（廣角、無追蹤）容忍 4 級；深空 2 級；其他 3 級
-    if cci_profile == "meteor":
-        wind_limit = 4
-    elif wind_profile == "deep_sky":
-        wind_limit = 2
-    else:
-        wind_limit = 3
-    wind_kmh = weather_day.get("wind_speed_kmh", -1)
-    wind_bft = weather_day.get("wind_beaufort", -1)
-    if not weather_ok or wind_kmh < 0 or wind_bft < 0:
-        wind_score, wind_raw = 50, "風速資料缺失"
-        completeness_flags.append("wind_missing")
-    else:
-        wind_raw = f"最大風速 {wind_kmh} km/h（{wind_bft}級風，上限 {wind_limit}級）"
-        if wind_bft <= max(wind_limit - 1, 0):
-            wind_score = 100
-        elif wind_bft == wind_limit:
-            wind_score = 65
-        else:
-            wind_score = 0
-    breakdown["wind"] = {"score": wind_score, "raw": wind_raw, "weight": W["wind"]}
-
-    score = round(
-        cloud_score  * W["cloud"]        +
-        dark_score   * W["dark_window"]  +
-        seeing_score * W["seeing"]       +
-        transp_score * W["transparency"] +
-        target_score * W["target"]       +
-        dew_score    * W["dew"]          +
-        wind_score   * W["wind"]
-    )
-
-    if "weather_missing" in completeness_flags and "seeing_missing" in completeness_flags:
-        completeness = "astronomy_only"
-    elif completeness_flags:
-        completeness = "partial"
-    else:
-        completeness = "full"
-
-    if score >= 80:   label = "✅ 強烈推薦出勤"
-    elif score >= 60: label = "🟢 值得出勤"
-    elif score >= 40: label = "⚠️ 謹慎考慮"
-    elif score >= 20: label = "🟠 不建議"
-    else:             label = "❌ 不值得出勤"
-
-    return {
-        "score":        score,
-        "label":        label,
-        "breakdown":    breakdown,
-        "completeness": completeness,
-        "cci_profile":  cci_profile,
-        "profile_notes": profile_notes,
-    }
 
 
 # ── 全台最佳地點排名（Phase 3A #4） ───────────────────────────
@@ -2246,7 +1327,9 @@ def location_matches_region_scope(item, region_scope):
         return False
 
 def is_ranking_location(item):
-    return item.get("review_status") == "approved" or item.get("source") == "user-provided"
+    # 地點審核制：只有 approved 地點可進最佳地點排名；
+    # 用戶提供的 pending 地點僅供該用戶的直接查詢使用
+    return item.get("review_status") == "approved"
 
 def ranking_location_items(region_scope=""):
     return [
@@ -2786,7 +1869,7 @@ def generate_reply(result):
     risk_text = "\n".join(f"- {f}" for f in risk_flags) if risk_flags else "（本次查詢無高風險項目）"
     profile_note_text = "\n".join(all_profile_notes) if all_profile_notes else ""
 
-    return call_openrouter(
+    reply_text = call_openrouter(
         system,
         (
             f"查詢類型：{'指定標的' if intent['query_type']=='A' else '開放探索'}\n"
@@ -2809,6 +1892,26 @@ def generate_reply(result):
             + f"流星雨：{ss}"
         ),
         max_tokens=1000,
+    )
+    return enforce_no_go_language(reply_text, cci_by_date)
+
+
+def enforce_no_go_language(reply_text, cci_by_date):
+    """紅藍軍程式層防線：CCI < 40 的日期，回覆必須明確出現 No-Go 用語。
+    LLM prompt 已有相同要求，此處為最後保證，防止 LLM 語氣軟化（不可被 prompt 繞過）。
+    """
+    if not reply_text or not cci_by_date:
+        return reply_text
+    low_dates = sorted(d for d, cci in cci_by_date.items() if cci.get("score", 100) < 40)
+    if not low_dates:
+        return reply_text
+    if "不建議" in reply_text or "不值得" in reply_text:
+        return reply_text
+    dates_str = "、".join(f"{d.month:02d}/{d.day:02d}" for d in low_dates)
+    return (
+        f"❌ 出勤判定：{dates_str} 信心度低於 40%，不建議出勤。\n"
+        f"（系統加註：以下分析僅供參考，請以此判定為準）\n\n"
+        f"{reply_text}"
     )
 
 
@@ -2879,6 +1982,14 @@ user_state                  = {}
 user_last_query             = {}
 user_wish_text              = {}
 user_pending_location_query = {}
+
+# 查詢處理執行緒池：取代裸 threading.Thread，限制同時處理的查詢數，
+# 避免流量突增時無上限開執行緒
+MESSAGE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="query")
+
+def submit_background_query(*args):
+    """把 process_and_reply 丟進共用執行緒池執行。"""
+    MESSAGE_EXECUTOR.submit(process_and_reply, *args)
 
 
 def make_feedback_quick_reply():
@@ -3112,6 +2223,17 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
         mark_message_as_read(mark_as_read_token)
         print(f"[地點待補座標] {requested_location}: {text}", flush=True)
 
+    except IntentParseError as e:
+        log_unhandled_exception("parse_intent", e)
+        safe_push_message(user_id, TextSendMessage(
+            text=(
+                "⚠️ 我沒能看懂這個查詢，請換個說法再試一次。\n"
+                "例如：「6/20 合歡山 銀河」或「這個週末 阿里山 有什麼可以拍？」"
+            )
+        ), "intent parse error reply")
+        mark_message_as_read(mark_as_read_token)
+        print(f"[意圖解析失敗] {text}", flush=True)
+
     except Exception as e:
         log_unhandled_exception("process_and_reply", e)
         safe_push_message(user_id, TextSendMessage(
@@ -3217,12 +2339,7 @@ def handle_message(event):
                 )
             ), "coordinate accepted reply")
             mark_message_as_read(mark_as_read_token)
-            thread = threading.Thread(
-                target=process_and_reply,
-                args=(user_id, pending["text"], mark_as_read_token, intent, warning),
-                daemon=True,
-            )
-            thread.start()
+            submit_background_query(user_id, pending["text"], mark_as_read_token, intent, warning)
             return
 
     # 許願等待狀態
@@ -3251,12 +2368,7 @@ def handle_message(event):
         safe_reply_message(event.reply_token, TextSendMessage(
             text=f"📅 正在查詢 {text} 的氣象條件，請稍候（約 30~60 秒）⏳"
         ), "weather 15d loading")
-        thread = threading.Thread(
-            target=process_and_reply,
-            args=(user_id, text, mark_as_read_token),
-            daemon=True,
-        )
-        thread.start()
+        submit_background_query(user_id, text, mark_as_read_token)
         return
 
     # 直接以文字送出的許願/建議。這可補上 Render 重啟造成 waiting_wish 記憶體遺失的情境。
@@ -3312,12 +2424,7 @@ def handle_message(event):
     ), "initial query reply"):
         return
     mark_message_as_read(mark_as_read_token)
-    thread = threading.Thread(
-        target=process_and_reply,
-        args=(user_id, text, mark_as_read_token),
-        daemon=True,
-    )
-    thread.start()
+    submit_background_query(user_id, text, mark_as_read_token)
 
 
 @handler.add(PostbackEvent)
