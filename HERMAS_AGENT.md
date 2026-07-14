@@ -115,6 +115,7 @@ data/taiwan_locations.json
 - 只有 `review_status: "approved"` 的地點會被 Bot 載入。
 - 未審核或來源不明的候選地點必須保持 `needs_review`，不可直接用於 production。
 - 新地點需包含 `lat`、`lon`、`aliases`、`region`、`source`、`confidence`、`review_status`。
+- Google Sheets「自定義地點」第 6 欄為「別名」；多個別名以半形逗號、中文逗號、頓號或換行分隔。別名只做精確匹配，不可擴張成拼音或模糊猜測。
 - 新增或修改地點後需執行：
 
 ```bash

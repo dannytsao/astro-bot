@@ -278,8 +278,13 @@ def init_sheets():
     try:
         ws_locations = sh.worksheet("自定義地點")
     except gspread.WorksheetNotFound:
-        ws_locations = sh.add_worksheet("自定義地點", rows=500, cols=5)
-        ws_locations.append_row(["地點名稱", "緯度", "經度", "新增時間", "原始查詢"])
+        ws_locations = sh.add_worksheet("自定義地點", rows=500, cols=6)
+        ws_locations.append_row(["地點名稱", "緯度", "經度", "新增時間", "原始查詢", "別名"])
+    if ws_locations.col_count < 6:
+        ws_locations.resize(cols=6)
+    location_headers = ws_locations.row_values(1)
+    if len(location_headers) < 6 or location_headers[5] != "別名":
+        ws_locations.update_cell(1, 6, "別名")
     ws_state = init_state_sheet(sh)
     return ws_query, ws_feedback, ws_locations, ws_state
 
@@ -537,14 +542,19 @@ def load_custom_locations():
             if len(row) < 3:
                 continue
             name, lat_str, lon_str = row[0].strip(), row[1].strip(), row[2].strip()
-            if not name or name in LOCATION_DATA:
+            existing = LOCATION_DATA.get(name)
+            if not name or (existing and existing.get("source") != "user-provided"):
                 continue
             try:
                 lat, lon = coerce_float(lat_str), coerce_float(lon_str)
             except ValueError:
                 continue
+            aliases = list(dict.fromkeys(
+                alias.strip() for alias in re.split(r"[,，、\n]+", row[5] if len(row) > 5 else "")
+                if alias.strip() and alias.strip() != name
+            ))
             LOCATION_DATA[name] = {
-                "lat": lat, "lon": lon, "aliases": [],
+                "lat": lat, "lon": lon, "aliases": aliases,
                 "source": "user-provided", "confidence": "user",
                 # 用戶提供座標未經人工審核：可用於該地點的直接查詢，
                 # 但不進入最佳地點排名與意圖解析目錄（地點審核制）
@@ -566,8 +576,8 @@ def maybe_reload_custom_locations():
     使用者直接手動編輯「自定義地點」Sheet 不會被正在執行的 process 看到，
     要等到下次重啟才生效。這裡在地點查找路徑上補一個節流重新載入，
     最多每 CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS 秒重讀一次 Sheet。
-    load_custom_locations() 本身已經會跳過已存在於 LOCATION_DATA 的名稱，
-    重複呼叫是安全的，只會撿到新增的列。"""
+    load_custom_locations() 會加入新列並刷新既有 user-provided 地點，
+    但不會覆寫 approved 地點；重複呼叫是安全的。"""
     global _custom_locations_last_loaded
     now = time.monotonic()
     if now - _custom_locations_last_loaded < CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS:
@@ -591,7 +601,7 @@ def save_custom_location(name, lat, lon, original_query=""):
     if ws_locations:
         try:
             ts_str = datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M")
-            ws_locations.append_row([name, str(lat), str(lon), ts_str, original_query[:100]])
+            ws_locations.append_row([name, str(lat), str(lon), ts_str, original_query[:100], ""])
             print(f"[自定義地點] 已儲存：{name} ({lat}, {lon})", flush=True)
         except Exception as e:
             print(f"[自定義地點] 儲存失敗：{describe_exception(e)}", flush=True)
@@ -2521,7 +2531,7 @@ def handle_message(event):
         clear_pending_state(ws_state, user_id)
         mark_message_as_read(mark_as_read_token)
         safe_reply_message(event.reply_token, TextSendMessage(
-            text=f"📅 正在查詢 {text} 的氣象條件，請稍候（約 30~60 秒）⏳"
+            text=f"📅 正在查詢 {text} 的氣象條件，請稍候（通常約 10～20 秒，複雜查詢可能較久）⏳"
         ), "weather 15d loading")
         submit_background_query(user_id, text, mark_as_read_token)
         return
@@ -2575,7 +2585,7 @@ def handle_message(event):
 
     # 一般查詢：立即回應「計算中」，背景執行運算
     if not safe_reply_message(event.reply_token, TextSendMessage(
-        text="🔭 計算中，請稍候（約 30～60 秒）..."
+        text="🔭 計算中，請稍候（通常約 10～20 秒，複雜查詢可能較久）..."
     ), "initial query reply"):
         return
     mark_message_as_read(mark_as_read_token)

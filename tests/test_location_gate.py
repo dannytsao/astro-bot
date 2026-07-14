@@ -2,6 +2,14 @@
 import main
 
 
+class FakeLocationsWorksheet:
+    def __init__(self):
+        self.appended_rows = []
+
+    def append_row(self, row):
+        self.appended_rows.append(row)
+
+
 class TestRankingGate:
     def test_approved_location_ranks(self):
         assert main.is_ranking_location({"review_status": "approved", "source": "legacy-curated"})
@@ -42,6 +50,19 @@ class TestPromptCatalog:
             main.save_custom_location(name, 23.6, 121.1)
             assert main.LOCATION_DATA[name]["review_status"] == "pending"
             assert not main.is_ranking_location(main.LOCATION_DATA[name])
+        finally:
+            main.LOCATION_DATA.pop(name, None)
+            main.KNOWN_LOCATIONS.pop(name, None)
+
+    def test_save_custom_location_writes_blank_alias_column(self, monkeypatch):
+        name = "測試別名欄地點"
+        fake_ws = FakeLocationsWorksheet()
+        monkeypatch.setattr(main, "ws_locations", fake_ws)
+        try:
+            main.save_custom_location(name, 23.6, 121.1, original_query="測試查詢")
+            assert len(fake_ws.appended_rows) == 1
+            assert fake_ws.appended_rows[0][0:3] == [name, "23.6", "121.1"]
+            assert fake_ws.appended_rows[0][5] == ""
         finally:
             main.LOCATION_DATA.pop(name, None)
             main.KNOWN_LOCATIONS.pop(name, None)
