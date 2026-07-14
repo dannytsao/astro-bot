@@ -1,5 +1,34 @@
 # CHANGELOG
 
+## 2026-07-14（修復：`init_sheets()` 啟動時必定 NameError，Google Sheets 連線從未真正在啟動時成功過）
+
+### 問題描述
+
+使用者在 Render 部署 log 中直接看到：
+
+```
+⚠️ Google Sheets 連線失敗：NameError: name 'init_state_sheet' is not defined
+```
+
+### 根本原因
+
+`init_sheets()`（定義於 `main.py:252`）內部呼叫 `init_state_sheet(sh)`，而模組層級的 `ws_query, ws_feedback, ws_locations, ws_state = init_sheets()`（`main.py:286`）在 module 由上到下載入時會立刻執行。但 `from state_store import init_state_sheet, ...` 原本放在 `main.py:449`，遠在第 286 行之後才執行。Python 對函式內自由變數是在「呼叫當下」才去 module 的 global 命名空間查找，不是在函式定義當下決定——第 286 行呼叫 `init_sheets()` 時，`init_state_sheet` 這個名字根本還沒被 import 進來，因此每次 process 啟動必定拋出 `NameError`，啟動當下 Google Sheets 連線 100% 失敗。
+
+**這個 bug 從 `cef861f`（今天稍早的 User State 持久化 commit）就存在**，並非本次「自定義地點重新載入」修復引入的新問題（已直接比對 `git show cef861f:main.py` 確認，非猜測）。
+
+**為什麼稍早的 `/healthz` 檢查顯示 `google_sheets_connected:true`，掩蓋了這個問題：** `log_query()` / `log_feedback()` 內建「`ws_query` 為空時嘗試重新呼叫 `init_sheets()`」的重連邏輯（本身是今天稍早修好的功能）。啟動當下的呼叫必定失敗，但只要在第一次真正的查詢進來、觸發 `log_query()`/`log_feedback()` 的重連嘗試時，module 已經完整載入完畢（第 449 行的 import 早就執行過了），這次重連就會成功——`/healthz` 檢查到的其實是「查詢觸發重連後」的補救結果，不是「啟動當下」的真實狀態。這也解釋了這次實測「南橫啞口」失敗的真正原因：地點查找發生在重連補救之前，當下 `ws_locations` 仍是 `None`，自定義地點重新載入邏輯直接 no-op。
+
+### 修復
+
+- 把 `from state_store import init_state_sheet, hydrate_user_state, persist_pending_state, clear_pending_state` 從 `main.py:449` 移到檔案最前面（`import gspread` / `Credentials` 之後），確保在任何 module 層級程式碼執行之前就已經 import 完成
+- 確認 `targets` / `astro` / `weather` / `cci` 四個模組沒有同樣的問題（它們只在稍後定義的函式內使用，該行第 16–286 行之間沒有任何模組層級程式碼引用到它們）
+
+### 驗證
+
+- 本地重新 import `main`（無真實 Google 憑證的情況下）：錯誤訊息從 `NameError: name 'init_state_sheet' is not defined` 變成預期中的 `RuntimeError: GOOGLE_CREDENTIALS_JSON is not configured`，證實 NameError 已消除
+- `python3 -m pytest tests/ -q`：82 passed
+- **待辦**：push 後需請使用者確認 Render 部署 log 不再出現這行 NameError，且 `/healthz` 在「剛啟動、還沒有任何查詢進來」的狀態下就顯示 `google_sheets_connected:true`（不是靠查詢觸發重連補救）
+
 ## 2026-07-14（Phase 3B #1：User State 持久化儲存）
 
 ### 新增
