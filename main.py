@@ -1,6 +1,7 @@
-import base64, hashlib, http.client, requests, json, re, logging, os, time, traceback
+import base64, difflib, hashlib, http.client, requests, json, re, logging, os, time, traceback
 from concurrent.futures import ThreadPoolExecutor
 
+from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone, date
 from pathlib import Path
 from skyfield.api import wgs84
@@ -9,7 +10,7 @@ from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
     MessageEvent, PostbackEvent, TextMessage, TextSendMessage, AudioMessage,
-    QuickReply, QuickReplyButton, PostbackAction,
+    QuickReply, QuickReplyButton, MessageAction, PostbackAction,
 )
 import gspread
 from google.oauth2.service_account import Credentials
@@ -655,6 +656,24 @@ class LocationResolutionError(RuntimeError):
         self.location_name = location_name
         self.intent = intent
 
+
+@dataclass(frozen=True)
+class LocationSuggestion:
+    location_name: str
+    matched_term: str
+    score: float
+    margin: float
+
+
+class LocationSuggestionError(LocationResolutionError):
+    def __init__(self, location_name, intent, suggestion):
+        super().__init__(
+            location_name,
+            intent,
+            f"地點「{location_name}」可能是「{suggestion.location_name}」，需要使用者確認。",
+        )
+        self.suggestion = suggestion
+
 def extract_location_hint(user_query):
     text = user_query.strip()
     text = re.sub(r"^(今天|今晚|明天|後天|這個週末|週末|下週[一二三四五六日天]?)", "", text).strip()
@@ -662,6 +681,12 @@ def extract_location_hint(user_query):
     if not match:
         return ""
     hint = match.group(1).strip(" ，,。？?：:")
+    hint = re.sub(
+        r"^(?:\d{1,2}月\d{1,2}(?:日|號)?|\d{1,2}[/-]\d{1,2})"
+        r"(?:\s*(?:到|至|[-~～])\s*(?:\d{1,2}月)?\d{1,2}(?:日|號)?)?[，,\s]*",
+        "",
+        hint,
+    )
     hint = re.sub(r"^(在|去|到)", "", hint).strip()
     return hint
 
@@ -690,6 +715,55 @@ def find_known_location_in_query(user_query):
         if term in user_query:
             return name
     return ""
+
+
+FUZZY_GENERIC_LOCATION_TERMS = {
+    "山上", "海邊", "海岸", "湖邊", "公園", "車站", "機場", "飛行場", "觀景台", "燈塔",
+}
+
+
+def normalize_location_match_text(value):
+    text = str(value or "").strip().replace("臺", "台")
+    return re.sub(r"[\s，,。！？?、：:（）()\-—_]", "", text)
+
+
+def fuzzy_location_min_score(text_length):
+    if text_length <= 3:
+        return 0.65
+    if text_length == 4:
+        return 0.72
+    return 0.75
+
+
+def suggest_known_location(location_hint):
+    maybe_reload_custom_locations()
+    hint = normalize_location_match_text(location_hint)
+    if len(hint) < 3 or hint in FUZZY_GENERIC_LOCATION_TERMS:
+        return None
+
+    best_by_location = {}
+    for name, item in LOCATION_DATA.items():
+        for term in location_search_terms(name, item):
+            normalized_term = normalize_location_match_text(term)
+            if len(normalized_term) < 2:
+                continue
+            score = difflib.SequenceMatcher(None, hint, normalized_term).ratio()
+            previous = best_by_location.get(name)
+            if previous is None or score > previous[0]:
+                best_by_location[name] = (score, term)
+
+    ranked = sorted(
+        ((score, name, term) for name, (score, term) in best_by_location.items()),
+        reverse=True,
+    )
+    if not ranked:
+        return None
+    top_score, top_name, top_term = ranked[0]
+    second_score = ranked[1][0] if len(ranked) > 1 else 0.0
+    margin = top_score - second_score
+    if top_score < fuzzy_location_min_score(len(hint)) or margin < 0.08:
+        return None
+    return LocationSuggestion(top_name, top_term, top_score, margin)
 
 def extract_compare_locations_from_text(user_query):
     """Split on compare keywords and find one location per half; returns (name_a, name_b) or (None, None)."""
@@ -763,6 +837,7 @@ def normalize_intent(intent, user_query):
         raise RuntimeError("意圖解析結果格式錯誤，請重新輸入查詢。")
 
     location_name = str(intent.get("location_name") or "").strip()
+    confirmed_location = str(intent.pop("_confirmed_location", "") or "").strip()
     try:
         supplied_coordinates = extract_user_coordinates(user_query)
     except ValueError as e:
@@ -771,13 +846,28 @@ def normalize_intent(intent, user_query):
     if supplied_coordinates:
         return apply_inline_coordinates(intent, user_query, location_name)
 
-    known_location = find_known_location_in_query(user_query)
+    known_location = confirmed_location or find_known_location_in_query(user_query)
     if known_location:
-        lat, lon = KNOWN_LOCATIONS[known_location]
+        coordinates = KNOWN_LOCATIONS.get(known_location)
+        if not coordinates:
+            raise LocationResolutionError(
+                known_location,
+                intent,
+                f"已確認地點已不在地點資料庫：{known_location}",
+            )
+        lat, lon = coordinates
         intent["location_name"] = known_location
         intent["lat"] = lat
         intent["lon"] = lon
     else:
+        user_location_hint = extract_location_hint(user_query)
+        suggestion_hint = user_location_hint or (
+            location_name if location_name_matches_query(location_name, user_query) else ""
+        )
+        suggestion = suggest_known_location(suggestion_hint)
+        if suggestion:
+            intent["location_name"] = suggestion_hint
+            raise LocationSuggestionError(suggestion_hint, intent, suggestion)
         for name, (lat, lon) in KNOWN_LOCATIONS.items():
             if name == location_name and location_name_matches_query(location_name, user_query):
                 intent["location_name"] = name
@@ -897,6 +987,20 @@ def location_coordinate_prompt(location_name):
         "或：北緯 23.124 東經 121.216\n\n"
         "緯度需在 -90～90，經度需在 -180～180。"
     )
+
+
+def location_confirmation_prompt(location_name, suggested_location):
+    return (
+        f"我找到一個可能的地點：你輸入的「{location_name}」是「{suggested_location}」嗎？\n\n"
+        "確認後我才會使用該地點座標進行計算。"
+    )
+
+
+def make_location_confirmation_quick_reply():
+    return QuickReply(items=[
+        QuickReplyButton(action=MessageAction(label="是，使用這個地點", text="是")),
+        QuickReplyButton(action=MessageAction(label="不是，我要補座標", text="不是")),
+    ])
 
 def parse_intent(user_query):
     today_str = date.today().isoformat()
@@ -2114,7 +2218,6 @@ def generate_comparison_reply(result_a, result_b):
 
 
 # ── LINE Bot 狀態管理 ─────────────────────────────────────────
-# user_state:                  {user_id: "waiting_wish" | "waiting_location_coordinates"}
 # user_last_query:             {user_id: "上次查詢文字"}
 # user_wish_text:              {user_id: "自動許願文字"}
 # user_pending_location_query: {user_id: {"text": 原查詢, "intent": 解析結果}}
@@ -2309,6 +2412,44 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
         mark_message_as_read(mark_as_read_token)
         print(f"[回覆] 完成｜[耗時] 總計 {time.monotonic() - _t_query_start:.2f}s", flush=True)
 
+    except LocationSuggestionError as e:
+        requested_location = e.location_name or extract_location_hint(text) or text
+        suggested_location = e.suggestion.location_name
+        user_state[user_id] = "waiting_location_confirmation"
+        user_pending_location_query[user_id] = {
+            "text": text,
+            "intent": e.intent,
+            "location_name": requested_location,
+            "suggested_location": suggested_location,
+            "suggestion_score": round(e.suggestion.score, 4),
+            "reply_prefix": reply_prefix,
+        }
+        persist_pending_state(
+            ws_state, user_id, "waiting_location_confirmation",
+            pending=user_pending_location_query[user_id],
+            last_query=user_last_query.get(user_id, text),
+            wish_text=user_wish_text.get(user_id, ""),
+        )
+        log_query(username, user_id, text, e.intent or {}, {
+            "policy": "fuzzy_candidate_requires_confirmation",
+            "location": {
+                "status": "confirmation_required",
+                "requested_location": requested_location,
+                "suggested_location": suggested_location,
+                "score": round(e.suggestion.score, 4),
+            },
+        })
+        safe_push_message(user_id, TextSendMessage(
+            text=location_confirmation_prompt(requested_location, suggested_location),
+            quick_reply=make_location_confirmation_quick_reply(),
+        ), "location confirmation prompt")
+        mark_message_as_read(mark_as_read_token)
+        print(
+            f"[地點待確認] {requested_location} -> {suggested_location} "
+            f"(score={e.suggestion.score:.3f}, margin={e.suggestion.margin:.3f})",
+            flush=True,
+        )
+
     except LocationResolutionError as e:
         requested_location = e.location_name or extract_location_hint(text) or text
         try:
@@ -2427,6 +2568,85 @@ def handle_message(event):
     text    = event.message.text.strip()
     mark_as_read_token = extract_mark_as_read_token(event)
     print(f"[收到] {user_id}: {text}", flush=True)
+
+    if user_state.get(user_id) == "waiting_location_confirmation":
+        pending = user_pending_location_query.get(user_id)
+        if text in ["取消", "cancel", "Cancel", "CANCEL"]:
+            user_state.pop(user_id, None)
+            user_pending_location_query.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
+            safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消剛剛的地點確認流程。"), "cancel location confirmation")
+            mark_message_as_read(mark_as_read_token)
+            return
+        if not pending:
+            user_state.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text="找不到上一筆待確認的地點，請重新輸入完整問題。"
+            ), "missing pending location confirmation")
+            mark_message_as_read(mark_as_read_token)
+            return
+
+        if text.lower() in {"是", "對", "正確", "yes", "y"}:
+            suggested_location = pending.get("suggested_location", "")
+            coordinates = KNOWN_LOCATIONS.get(suggested_location)
+            if coordinates:
+                intent = dict(pending.get("intent") or {})
+                intent["location_name"] = suggested_location
+                intent["lat"], intent["lon"] = coordinates
+                intent["_confirmed_location"] = suggested_location
+                user_state.pop(user_id, None)
+                user_pending_location_query.pop(user_id, None)
+                clear_pending_state(ws_state, user_id)
+                safe_reply_message(event.reply_token, TextSendMessage(
+                    text=f"收到，將使用「{suggested_location}」的已知座標接續計算。"
+                ), "location suggestion accepted")
+                mark_message_as_read(mark_as_read_token)
+                submit_background_query(
+                    user_id,
+                    pending["text"],
+                    mark_as_read_token,
+                    intent,
+                    pending.get("reply_prefix", ""),
+                )
+                return
+
+        if text.lower() in {"不是", "否", "不對", "no", "n"}:
+            requested_location = pending.get("location_name") or "這個地點"
+            username = get_display_name(user_id)
+            wish_saved = log_wish(
+                username,
+                user_id,
+                pending.get("text", ""),
+                f"地點資料庫新增：{requested_location}（原始查詢：{pending.get('text', '')}）",
+                "地點許願（模糊候選被拒絕）",
+            )
+            user_state[user_id] = "waiting_location_coordinates"
+            persist_pending_state(
+                ws_state, user_id, "waiting_location_coordinates",
+                pending=pending,
+                last_query=user_last_query.get(user_id, pending.get("text", "")),
+                wish_text=user_wish_text.get(user_id, ""),
+            )
+            prompt = location_coordinate_prompt(requested_location)
+            if not wish_saved:
+                prompt += "\n\n⚠️ 地點許願池暫時寫入失敗，但我仍會等待你補座標。"
+            safe_reply_message(event.reply_token, TextSendMessage(text=prompt), "location suggestion rejected")
+            mark_message_as_read(mark_as_read_token)
+            return
+
+        if is_likely_new_query(text):
+            user_state.pop(user_id, None)
+            user_pending_location_query.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
+            print(f"[地點確認] 收到新查詢，取消上一筆 pending：{text}", flush=True)
+        else:
+            safe_reply_message(event.reply_token, TextSendMessage(
+                text="請回覆「是」使用建議地點，或回覆「不是」改為提供座標。",
+                quick_reply=make_location_confirmation_quick_reply(),
+            ), "location confirmation reminder")
+            mark_message_as_read(mark_as_read_token)
+            return
 
     # 等待使用者補座標
     if user_state.get(user_id) == "waiting_location_coordinates":

@@ -1,7 +1,7 @@
 """Google Sheets 持久化：LINE 使用者對話等待狀態。
 
 main.py 的 user_state / user_pending_location_query / user_last_query / user_wish_text
-原本是純記憶體 dict，Render 重啟或 redeploy 會清空使用中的補座標 / 許願 / 15天日曆流程。
+原本是純記憶體 dict，Render 重啟或 redeploy 會清空使用中的地點確認 / 補座標 / 許願 / 15天日曆流程。
 這裡把「使用者正在等待回覆」的那一刻寫回 Google Sheets，啟動時載回記憶體，
 讓這幾個窄流程可以撐過重啟；一般查詢（不在等待狀態）不受影響，不逐則訊息寫入。
 """
