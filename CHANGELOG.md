@@ -17,8 +17,33 @@
 ### 驗證說明
 
 - `py_compile` 全模組通過、`git diff --check` 通過
-- 本次未能於此 sandbox 執行 `tests/` 內建 pytest 套件：sandbox 網路政策擋下 `ssd.jpl.nasa.gov`（skyfield 首次執行需下載 `de421.bsp`），非程式碼問題。改以針對 `state_store.py` 的獨立驗證腳本（模擬 gspread worksheet）覆蓋：重啟後狀態還原、清除後同列重用、多用戶互不覆蓋、Sheets 斷線安全 no-op，全數通過
-- **待辦**：下次有網路存取權限的環境需補跑 `python3 -m pytest tests/ -q` 完整確認；push 後需依 Render Deploy Gate 確認 `/healthz` 正常且 `google_sheets_connected: true`
+- pytest：sandbox 網路政策擋下 `ssd.jpl.nasa.gov`（skyfield 首次執行需下載 `de421.bsp`），改從 PyPI 允許清單內的 `skyfield-data` 套件取出 `de421.bsp` 放到 repo 根目錄（gitignored，不進版控）解掉此限制，隨後 `python3 -m pytest tests/ -q` 78 passed
+- Push 後 `/healthz` 已確認：`ok: true`、`google_sheets_connected: true`、`line_token_probe: ok`、`openrouter_key_probe: ok`、`version` 與部署 commit 一致
+- 「使用者透過 LINE 補座標流程 + 重啟 → pending 狀態正確恢復」這個端對端情境**尚未實測確認**：使用者實際操作習慣是看到未知地點提示後直接手動編輯「自定義地點」Sheet，而不是回覆座標給 Bot，因此還沒有一次走過補座標對話流程本身。`state_store.py` 的邏輯已有獨立驗證腳本與 pytest 覆蓋，但這個特定端對端路徑仍待實測
+
+## 2026-07-14（修復：手動編輯「自定義地點」Sheet 對正在執行的 process 不生效）
+
+### 問題描述
+
+使用者反映：已手動在「自定義地點」Google Sheet 新增地點（例如「南橫啞口」+ 經緯度），但重新查詢「7/17 南橫啞口適合拍星嗎？」時仍被當成未知地點，要求補座標。
+
+### 根本原因
+
+`load_custom_locations()`（`main.py`）過去只在 process 啟動時被呼叫一次（模組載入時的 `load_custom_locations()`），沒有任何定時、per-request 或手動觸發的重新載入機制。使用者手動編輯 Sheet 後，正在執行的 Render process 記憶體中的 `LOCATION_DATA` / `KNOWN_LOCATIONS` 不會更新，只有下次 process 重啟（例如新的 deploy）才會重新讀取 Sheet、看到新增的列。
+
+### 修復
+
+- **新增 `maybe_reload_custom_locations()`**：節流重新載入包裝，最多每 5 分鐘（`CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS`）重讀一次「自定義地點」Sheet；`load_custom_locations()` 本身已會跳過已存在於 `LOCATION_DATA` 的名稱，重複呼叫是安全的，只會撿到新增的列
+  - 掛在 `find_known_location_in_query()`（`normalize_intent()` 內每次查詢地點解析都會呼叫的函式）最前面，讓「手動新增地點後最多等 5 分鐘就會被看到」，不需要等下次 deploy
+  - 節流設計與 `weather.py` 既有的 30 分鐘預報快取風格一致：只在查找路徑上偶爾多打一次 Sheets API，不逐則訊息觸發
+  - 啟動時的初始載入呼叫點也改用這個節流版本（`maybe_reload_custom_locations()` 取代原本直接呼叫 `load_custom_locations()`），行為不變（本來就是「從未載入」，第一次呼叫必定真的讀取）
+- **修正節流哨兵值 bug（實作過程中發現並修正，未流出）**：`_custom_locations_last_loaded` 初始值原訂為 `0.0`，但 `time.monotonic()` 的起點是實作定義的（常是開機時間），process 剛啟動、系統開機不久時可能回傳小於節流間隔的值，導致「從未載入過」被誤判為「還在節流視窗內」，第一次呼叫反而不會真的重讀 Sheet。改用 `float("-inf")` 作為哨兵值，保證第一次呼叫必定觸發真正的載入
+
+### 測試
+
+- 新增 `tests/test_custom_location_reload.py`（4 個測試）：手動新增地點會被撿到、節流視窗內不重複打 API、節流視窗過後會再讀一次、`find_known_location_in_query()` 會觸發重新載入
+- `python3 -m pytest tests/ -q`：82 passed（78 + 新增 4 個）
+- 以使用者回報的實際地點名稱（南橫啞口）與查詢文字重現整個流程，確認修復前會失敗、修復後可正確解析座標
 
 ## 2026-07-05（Phase 3 前置重構：模組拆分 + 可靠性強化 + 測試安全網）
 

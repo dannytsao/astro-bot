@@ -1,4 +1,4 @@
-import hashlib, http.client, requests, json, re, logging, os, traceback
+import hashlib, http.client, requests, json, re, logging, os, time, traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime, timedelta, timezone, date
@@ -553,6 +553,26 @@ def load_custom_locations():
     except Exception as e:
         print(f"[自定義地點] 載入失敗：{describe_exception(e)}", flush=True)
 
+CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS = 5 * 60
+# time.monotonic() 的起點是實作定義的（常是開機時間），不是 epoch，
+# process 剛啟動時可能回傳很小的值；哨兵值必須用 -inf，不能用 0.0，
+# 否則「從未載入過」在剛開機的 process 上會被誤判為「還在節流視窗內」。
+_custom_locations_last_loaded = float("-inf")
+
+def maybe_reload_custom_locations():
+    """節流重新載入：load_custom_locations() 原本只在啟動時跑一次，
+    使用者直接手動編輯「自定義地點」Sheet 不會被正在執行的 process 看到，
+    要等到下次重啟才生效。這裡在地點查找路徑上補一個節流重新載入，
+    最多每 CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS 秒重讀一次 Sheet。
+    load_custom_locations() 本身已經會跳過已存在於 LOCATION_DATA 的名稱，
+    重複呼叫是安全的，只會撿到新增的列。"""
+    global _custom_locations_last_loaded
+    now = time.monotonic()
+    if now - _custom_locations_last_loaded < CUSTOM_LOCATION_RELOAD_INTERVAL_SECONDS:
+        return
+    _custom_locations_last_loaded = now
+    load_custom_locations()
+
 def save_custom_location(name, lat, lon, original_query=""):
     """將用戶提供座標的新地點存入 Sheets 並更新記憶體。"""
     if name in LOCATION_DATA:
@@ -574,7 +594,7 @@ def save_custom_location(name, lat, lon, original_query=""):
         except Exception as e:
             print(f"[自定義地點] 儲存失敗：{describe_exception(e)}", flush=True)
 
-load_custom_locations()  # 啟動時載入用戶自定義地點
+maybe_reload_custom_locations()  # 啟動時載入用戶自定義地點
 
 def location_search_terms(name, item):
     return [name] + [alias for alias in item.get("aliases", []) if alias]
@@ -649,6 +669,7 @@ def is_ambiguous_location(location_name, user_query):
     return any(candidate in AMBIGUOUS_LOCATION_TERMS for candidate in candidates if candidate)
 
 def find_known_location_in_query(user_query):
+    maybe_reload_custom_locations()
     candidates = []
     for name, item in LOCATION_DATA.items():
         for term in location_search_terms(name, item):
