@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-14（Phase 3B #1：User State 持久化儲存）
+
+### 新增
+
+- **`state_store.py`**：把 `user_state` / `user_pending_location_query` / `user_last_query` / `user_wish_text` 的「等待中」狀態持久化到 Google Sheets 新分頁「使用者狀態」，解決 2026-06-10 架構檢討列為最高優先的技術債——Render 重啟或 redeploy 會靜默清空使用中的補座標／許願／15天氣象日曆流程
+  - 只在使用者進入 `waiting_location_coordinates` / `waiting_wish` / `waiting_weather_location` 三個等待狀態的轉場時寫入，一般查詢不逐則觸發 Sheets 寫入，避免拖慢回覆速度
+  - `hydrate_user_state()`：啟動時把 sheet 內容讀回記憶體 dict，並建立 row index cache
+  - `persist_pending_state()` / `clear_pending_state()`：best-effort upsert／清空，Sheets API 失敗不中斷主流程；同一用戶重複觸發等待流程時重用同一列，避免 sheet 無上限成長
+  - `main.py` 對應的 8 個狀態轉場點（3 個設定點、8 個清除分支）已接上持久化呼叫
+
+### 修復
+
+- **`init_sheets()` 重連呼叫點解包不一致**：`init_sheets()` 回傳 4 個值（含新增的 `ws_state`），但 `log_query()` / `log_feedback()` 內原本的 3 處 Sheets 斷線重連呼叫只解包 2 個值，會拋 `ValueError` 並被外層 `except Exception` 靜默吞掉——代表 Sheets 斷線後的自動重連路徑過去從未真正生效過。已修正為完整解包並補上對應 `global` 宣告
+
+### 驗證說明
+
+- `py_compile` 全模組通過、`git diff --check` 通過
+- 本次未能於此 sandbox 執行 `tests/` 內建 pytest 套件：sandbox 網路政策擋下 `ssd.jpl.nasa.gov`（skyfield 首次執行需下載 `de421.bsp`），非程式碼問題。改以針對 `state_store.py` 的獨立驗證腳本（模擬 gspread worksheet）覆蓋：重啟後狀態還原、清除後同列重用、多用戶互不覆蓋、Sheets 斷線安全 no-op，全數通過
+- **待辦**：下次有網路存取權限的環境需補跑 `python3 -m pytest tests/ -q` 完整確認；push 後需依 Render Deploy Gate 確認 `/healthz` 正常且 `google_sheets_connected: true`
+
 ## 2026-07-05（Phase 3 前置重構：模組拆分 + 可靠性強化 + 測試安全網）
 
 ### 重構

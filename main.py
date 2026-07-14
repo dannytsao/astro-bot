@@ -279,14 +279,15 @@ def init_sheets():
     except gspread.WorksheetNotFound:
         ws_locations = sh.add_worksheet("自定義地點", rows=500, cols=5)
         ws_locations.append_row(["地點名稱", "緯度", "經度", "新增時間", "原始查詢"])
-    return ws_query, ws_feedback, ws_locations
+    ws_state = init_state_sheet(sh)
+    return ws_query, ws_feedback, ws_locations, ws_state
 
 try:
-    ws_query, ws_feedback, ws_locations = init_sheets()
+    ws_query, ws_feedback, ws_locations, ws_state = init_sheets()
     print("✅ Google Sheets 連線成功", flush=True)
 except Exception as e:
     print(f"⚠️ Google Sheets 連線失敗：{describe_exception(e)}", flush=True)
-    ws_query = ws_feedback = ws_locations = None
+    ws_query = ws_feedback = ws_locations = ws_state = None
 
 
 @app.route("/", methods=["GET"])
@@ -317,10 +318,10 @@ def healthz():
     })
 
 def log_query(username, user_id, query, intent, data_quality=None):
-    global ws_query, ws_feedback
+    global ws_query, ws_feedback, ws_locations, ws_state
     if not ws_query:
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_locations, ws_state = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 查詢記錄初始化失敗：{describe_exception(e)}", flush=True)
     if not ws_query:
@@ -362,10 +363,10 @@ def normalize_feedback_content(rating, feedback_type, wish=""):
     return feedback_type
 
 def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
-    global ws_query, ws_feedback
+    global ws_query, ws_feedback, ws_locations, ws_state
     if not ws_feedback:
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_locations, ws_state = init_sheets()
         except Exception as e:
             print(f"[Sheets 錯誤] 反饋記錄初始化失敗：{describe_exception(e)}", flush=True)
     if not ws_feedback:
@@ -381,7 +382,7 @@ def log_feedback(username, user_id, query, rating, feedback_type, wish=""):
     except Exception as e:
         print(f"[Sheets 錯誤] {describe_exception(e)}", flush=True)
         try:
-            ws_query, ws_feedback = init_sheets()
+            ws_query, ws_feedback, ws_locations, ws_state = init_sheets()
             ws_feedback.append_row([
                 datetime.now(timezone(timedelta(hours=8))).strftime("%Y-%m-%d %H:%M"),
                 username, content,
@@ -445,6 +446,7 @@ from astro import (
 )
 from weather import wind_kmh_to_beaufort, check_weather_multi, get_7timer_seeing
 from cci import _moon_illumination, compute_cci_for_date
+from state_store import init_state_sheet, hydrate_user_state, persist_pending_state, clear_pending_state
 
 DEFAULT_KNOWN_LOCATIONS = {
     "日月潭": (23.865, 120.917),
@@ -2007,6 +2009,9 @@ user_last_query             = {}
 user_wish_text              = {}
 user_pending_location_query = {}
 
+# 啟動時把上次寫入 Sheets 的等待狀態載回記憶體，讓 Render 重啟不會清空進行中的補座標／許願／15天日曆流程
+hydrate_user_state(ws_state, user_state, user_pending_location_query, user_last_query, user_wish_text)
+
 # 查詢處理執行緒池：取代裸 threading.Thread，限制同時處理的查詢數，
 # 避免流量突增時無上限開執行緒
 MESSAGE_EXECUTOR = ThreadPoolExecutor(max_workers=8, thread_name_prefix="query")
@@ -2231,6 +2236,12 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
             "intent": e.intent,
             "location_name": requested_location,
         }
+        persist_pending_state(
+            ws_state, user_id, "waiting_location_coordinates",
+            pending=user_pending_location_query[user_id],
+            last_query=user_last_query.get(user_id, text),
+            wish_text=user_wish_text.get(user_id, ""),
+        )
         log_query(username, user_id, text, e.intent or {}, {
             "policy": "no_guessing_without_evidence",
             "location": {
@@ -2300,6 +2311,7 @@ def handle_message(event):
         if text in ["取消", "cancel", "Cancel", "CANCEL"]:
             user_state.pop(user_id, None)
             user_pending_location_query.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
             safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消剛剛的地點補座標流程。"), "cancel location prompt")
             mark_message_as_read(mark_as_read_token)
             return
@@ -2318,6 +2330,7 @@ def handle_message(event):
         if not coordinates and is_likely_new_query(text):
             user_state.pop(user_id, None)
             user_pending_location_query.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
             print(f"[地點補座標] 收到新查詢，取消上一筆 pending：{text}", flush=True)
         elif not coordinates:
             safe_reply_message(event.reply_token, TextSendMessage(
@@ -2336,6 +2349,7 @@ def handle_message(event):
             pass
         elif not pending:
             user_state.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
             safe_reply_message(event.reply_token, TextSendMessage(
                 text="找不到上一筆待補座標查詢，請重新輸入完整問題。"
             ), "missing pending location query")
@@ -2351,6 +2365,7 @@ def handle_message(event):
             save_custom_location(intent["location_name"], lat, lon, original_query=pending.get("text", ""))
             user_state.pop(user_id, None)
             user_pending_location_query.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
 
             warning = ""
             if not is_in_taiwan_loose_range(lat, lon):
@@ -2369,6 +2384,7 @@ def handle_message(event):
     # 許願等待狀態
     if user_state.get(user_id) == "waiting_wish":
         user_state.pop(user_id, None)
+        clear_pending_state(ws_state, user_id)
         username = get_display_name(user_id)
         last_q   = user_last_query.get(user_id, "")
         saved = log_wish(username, user_id, last_q, text, "許願")
@@ -2383,11 +2399,13 @@ def handle_message(event):
     if user_state.get(user_id) == "waiting_weather_location":
         if text in ["取消", "cancel", "Cancel", "CANCEL"]:
             user_state.pop(user_id, None)
+            clear_pending_state(ws_state, user_id)
             safe_reply_message(event.reply_token, TextSendMessage(text="好的，已取消景點氣象評估。"), "cancel weather 15d")
             mark_message_as_read(mark_as_read_token)
             return
         # 直接把用戶輸入（景點 + 可選日期）送進主流程
         user_state.pop(user_id, None)
+        clear_pending_state(ws_state, user_id)
         mark_message_as_read(mark_as_read_token)
         safe_reply_message(event.reply_token, TextSendMessage(
             text=f"📅 正在查詢 {text} 的氣象條件，請稍候（約 30~60 秒）⏳"
@@ -2470,6 +2488,12 @@ def handle_postback(event):
         ), "bad rating reply")
     elif data == "wish":
         user_state[user_id] = "waiting_wish"
+        persist_pending_state(
+            ws_state, user_id, "waiting_wish",
+            pending=user_pending_location_query.get(user_id),
+            last_query=last_q,
+            wish_text=user_wish_text.get(user_id, ""),
+        )
         safe_reply_message(event.reply_token, TextSendMessage(
             text="💡 請說說你的建議或想新增的功能。建議用「建議：...」開頭，這樣即使服務重啟也能被記錄。"
         ), "wish prompt reply")
@@ -2484,6 +2508,12 @@ def handle_postback(event):
         safe_reply_message(event.reply_token, TextSendMessage(text="好的 👍"), "wish skip reply")
     elif data == "menu_weather_15d":
         user_state[user_id] = "waiting_weather_location"
+        persist_pending_state(
+            ws_state, user_id, "waiting_weather_location",
+            pending=user_pending_location_query.get(user_id),
+            last_query=last_q,
+            wish_text=user_wish_text.get(user_id, ""),
+        )
         safe_reply_message(event.reply_token, TextSendMessage(
             text=(
                 "📅 15天景點氣象評估\n\n"
