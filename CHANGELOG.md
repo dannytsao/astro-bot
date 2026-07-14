@@ -1,5 +1,28 @@
 # CHANGELOG
 
+## 2026-07-14（Phase 3B #2 續：Render 環境變數補齊，OpenRouter 模型改用 Gemini 2.5 Flash）
+
+### 問題描述
+
+`render.yaml` 從一開始就宣告 `OPENROUTER_MODEL: google/gemini-2.5-flash`、`OPENROUTER_FALLBACK_MODELS: google/gemini-2.5-flash,openai/gpt-4o-mini`，但實際檢查 Render Dashboard 的 Environment 設定，才發現這兩個變數（以及 `GOOGLE_SPREADSHEET_ID`、`OPENROUTER_SITE_URL`、`OPENROUTER_APP_NAME`）從來沒有真的被加進 Render——production 只設定了 4 個機密類變數（`GOOGLE_CREDENTIALS_JSON`、`LINE_CHANNEL_ACCESS_TOKEN`、`LINE_CHANNEL_SECRET`、`OPENROUTER_API_KEY`）。`render.yaml` 的宣告從未真正生效，`OPENROUTER_MODEL` 因此一直悄悄退回 `main.py` 寫死的預設值 `anthropic/claude-sonnet-4.5`——一個明顯 over-spec、也明顯拖慢 `generate_reply()` 的模型選擇，且完全不是程式邏輯或任何人刻意選的，是設定缺口。
+
+### 處理
+
+- 使用者直接在 Render Dashboard 補上 `OPENROUTER_MODEL=google/gemini-2.5-flash`、`OPENROUTER_FALLBACK_MODELS=google/gemini-2.5-flash,openai/gpt-4o-mini`，手動觸發重新部署
+- 純環境變數變更，本次無程式碼異動
+- `GOOGLE_SPREADSHEET_ID`、`OPENROUTER_SITE_URL`、`OPENROUTER_APP_NAME` 三個變數目前雖與程式碼預設值巧合相同、暫無實際影響，仍建議之後一併補上，避免日後程式碼預設值變動時 Render 沒跟著變而悄悄跑掉
+
+### 驗證結果
+
+- `/healthz` 確認：`openrouter_model_source` 從 `"default"` 變成 `"OPENROUTER_MODEL"`，`openrouter_model` 顯示 `google/gemini-2.5-flash`
+- 真實查詢比對（「7/17 南橫啞口適合拍星嗎」，開放探索型，會觸發已知的 117 標的耗時問題）：`generate_reply` 從 Claude Sonnet 4.5 時期的 18.23s 降到 **4.21s**，降幅 77%，與研究到的「Gemini 2.5 Flash 針對低延遲優化」的公開資料吻合
+- 使用者確認回覆品質與格式正常（純文字格式維持、CCI 與風險旗幟未受影響），初步判斷換模型未犧牲準確度；後續累積更多樣本可再驗證
+- `compute_target_windows`（117 標的暴力掃描）耗時不受這次變更影響，維持先前 20+ 秒的已知、暫緩處理的問題
+
+### 為什麼選 Gemini 2.5 Flash 而非 OpenRouter 免費模型
+
+有考慮過 OpenRouter 上真正 $0 的 `:free` 模型（例如 DeepSeek R1、Llama 3.3 70B 等），但查到的限制對正式營運的 LINE Bot 風險偏高：免費額度僅每天 50 次請求（除非帳號歷史儲值滿 $10 美元才提升到 1000 次/天）、每分鐘上限 20 次，且免費模型陣容會不定期輪替下架，不符合這個專案重視的「可預期、不猜測」風格。Gemini 2.5 Flash 雖非完全免費，但比 Claude Sonnet 4.5 便宜約 24 倍，且是 `render.yaml` 從一開始就規劃好的方向，風險遠低於賭免費模型的配額穩定性
+
 ## 2026-07-14（Phase 3B #2 續：`run_query()` 內部細部耗時記錄）
 
 ### 背景
