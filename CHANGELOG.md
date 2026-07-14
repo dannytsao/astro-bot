@@ -1,6 +1,29 @@
 # CHANGELOG
 
-## 2026-07-14（開發方向調整：語音輸入支援優先於 Phase 3B #4–#11）
+## 2026-07-14（Phase 3B #3 Day 1：語音輸入核心邏輯，尚未部署）
+
+### 新增
+
+- **`AudioMessage` webhook handler**（`main.py`）：收到 LINE 語音訊息後立即回覆「🎤 語音辨識中，請稍候...」，丟進既有的 `MESSAGE_EXECUTOR` 背景執行緒池處理，不佔用 reply_token 30 秒時限
+- **`transcribe_voice_query()`**：呼叫 OpenRouter 多模態音訊輸入（`input_audio` 內容區塊），沿用現有 `OPENROUTER_API_KEY`／`call_openrouter()`，不需另外申請 API key。要求 LLM 同時回傳逐字稿與自我評估的信心等級（high/medium/low），JSON 格式錯誤時比照 `parse_intent()` 重試一次
+  - 信心不足或逐字稿為空 → 一律降級為 low，不送入查詢流程，回覆使用者改用文字輸入（不猜測原則：模型自稱高信心但逐字稿是空的，仍強制視為 low）
+  - 兩次嘗試都拿不到合法 JSON → 安全降級回傳 `{transcript:"", confidence:"low"}`，不拋例外中斷流程
+- **`process_voice_and_reply()`**：下載語音（`line_bot_api.get_message_content`）→ 大小防呆（>15MB 直接拒絕，對應 Gemini 音訊輸入上限）→ 轉錄 → 信心足夠時接續既有 `process_and_reply()` 查詢流程，用 `reply_prefix` 帶出「🎤 語音辨識結果：「...」」讓使用者能發現辨識錯誤
+- `[耗時]` log：語音下載、轉錄呼叫、處理總計，比照今天稍早建立的規範
+
+### 驗證
+
+- `py_compile` 全模組通過；既有 82 個 pytest **全數維持通過，無 regression**——這次改動對既有文字查詢流程零影響（純新增 `AudioMessage` handler，未修改 `TextMessage` handler 任何邏輯）
+- 針對 `transcribe_voice_query()` 寫了獨立驗證腳本（mock `call_openrouter`），涵蓋：高/低信心正確判斷、空逐字稿強制降級、非法信心值防禦性夾值、JSON 錯誤重試成功、兩次皆失敗安全降級不拋例外、音訊 base64 編碼正確性——全數通過
+
+### 尚未解決
+
+- OpenRouter `input_audio` 內容區塊的 `format` 欄位該填 `"mp4"`／`"aac"`／`"m4a"` 何者，沒有查到權威文件明確寫死，目前先寫 `"mp4"`，需要 Day 2 用真實語音訊息實測才能確認是否正確
+- **本次僅完成本地實作與驗證，故意不 commit/push**——依照跟使用者議定的分階段計畫，語音功能要等 Day 2 補齊單元測試、跑完整 dry-run gate、且使用者用真實 LINE 語音測試過，才會上 production
+
+### 開發方向
+
+使用者明確要求：這次開發過程中不能影響既有用戶使用；若既有功能出問題，需優先處理既有問題，語音功能開發可暫停
 
 > 本次無功能代碼變更。開發方向調整，已同步至 ROADMAP.md 與 CLAUDE.md。
 

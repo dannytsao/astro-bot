@@ -1,4 +1,4 @@
-import hashlib, http.client, requests, json, re, logging, os, time, traceback
+import base64, hashlib, http.client, requests, json, re, logging, os, time, traceback
 from concurrent.futures import ThreadPoolExecutor
 
 from datetime import datetime, timedelta, timezone, date
@@ -8,7 +8,7 @@ from flask import Flask, request, abort, jsonify
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError, LineBotApiError
 from linebot.models import (
-    MessageEvent, PostbackEvent, TextMessage, TextSendMessage,
+    MessageEvent, PostbackEvent, TextMessage, TextSendMessage, AudioMessage,
     QuickReply, QuickReplyButton, PostbackAction,
 )
 import gspread
@@ -929,6 +929,71 @@ query_type：A=有具體天體（銀河/獵戶座/M42等），B=開放探索
             continue
         return normalize_intent(parsed, user_query)
     raise IntentParseError("意圖解析失敗：LLM 未回傳合法 JSON") from last_error
+
+
+# ── 語音查詢轉錄 ───────────────────────────────────────────────
+# LINE 語音訊息為 M4A 容器（AAC-LC 編碼），MIME 常回報為 audio/mp4。
+# 透過 OpenRouter 現有的 OPENROUTER_API_KEY 呼叫多模態音訊輸入，不需另外申請 API key。
+MAX_VOICE_AUDIO_BYTES = 15 * 1024 * 1024  # Gemini 音訊輸入上限 15MB
+
+class VoiceTranscriptionError(RuntimeError):
+    """語音訊息下載或呼叫轉錄 API 本身失敗（非「聽不清楚」，是流程性錯誤）。"""
+    pass
+
+def transcribe_voice_query(audio_bytes, audio_format="mp4"):
+    """回傳 {"transcript": str, "confidence": "high"|"medium"|"low"}。
+    信心不足或完全無法辨識時 confidence 為 "low"、transcript 可能為空字串，
+    呼叫端必須自行判斷是否要把 transcript 送進查詢流程（不猜測原則：低信心不可送入）。"""
+    today_str = date.today().isoformat()
+    system = f"""你是天文攝影 LINE Bot 的語音查詢轉錄員。今天是 {today_str}。
+使用者傳送一段語音，內容應該是台灣天文攝影相關的查詢（例如地點、日期、想拍的天體）。
+請完成兩件事：
+1. 將語音內容逐字轉錄為繁體中文文字
+2. 誠實自我評估這段語音是否清楚可辨識，不要為了看起來有用而虛報信心
+
+以 JSON 回覆，不加說明或 markdown：
+{{"transcript":"逐字稿內容","confidence":"high或medium或low"}}
+
+confidence 判斷原則：
+- high：語音清晰、內容明確，逐字稿正確的把握很高
+- medium：大致聽得懂，但有些不確定（背景雜音、口音、語速快、部分詞語不確定）
+- low：聽不清楚、內容破碎、有明顯段落無法辨識，或音訊內容不像是中文語音查詢
+若完全無法辨識，transcript 留空字串、confidence 回 low。"""
+
+    audio_b64 = base64.b64encode(audio_bytes).decode("ascii")
+    last_error = None
+    for attempt in range(2):
+        user_content = [
+            {
+                "type": "input_audio",
+                "input_audio": {"data": audio_b64, "format": audio_format},
+            },
+            {
+                "type": "text",
+                "text": "請轉錄這段語音查詢。" if attempt == 0 else
+                        "上次回覆不是合法 JSON。請只回覆一個合法 JSON 物件，不加任何說明、前後綴或 markdown。",
+            },
+        ]
+        try:
+            text = call_openrouter(system, user_content, max_tokens=500,
+                                   temperature=0.2 if attempt == 0 else 0.0)
+            text = re.sub(r"```(?:json)?|```", "", text.strip()).strip()
+            parsed = json.loads(text)
+            if not isinstance(parsed, dict):
+                raise ValueError(f"語音轉錄結果不是 JSON 物件：{type(parsed).__name__}")
+        except (json.JSONDecodeError, ValueError) as e:
+            last_error = e
+            print(f"[語音轉錄] 第 {attempt + 1} 次解析失敗：{describe_exception(e)}", flush=True)
+            continue
+        transcript = str(parsed.get("transcript") or "").strip()
+        confidence = str(parsed.get("confidence") or "low").strip().lower()
+        if confidence not in ("high", "medium", "low"):
+            confidence = "low"
+        if not transcript:
+            confidence = "low"
+        return {"transcript": transcript, "confidence": confidence}
+    print(f"[語音轉錄] 兩次嘗試皆無法取得合法 JSON：{describe_exception(last_error)}", flush=True)
+    return {"transcript": "", "confidence": "low"}
 
 
 _M_NUM_RE = re.compile(r'^m\d+$')
@@ -2518,6 +2583,69 @@ def handle_message(event):
         return
     mark_message_as_read(mark_as_read_token)
     submit_background_query(user_id, text, mark_as_read_token)
+
+
+def submit_background_voice_query(*args):
+    """把 process_voice_and_reply 丟進共用執行緒池執行。"""
+    MESSAGE_EXECUTOR.submit(process_voice_and_reply, *args)
+
+
+def process_voice_and_reply(user_id, message_id, mark_as_read_token=""):
+    """背景執行緒：下載語音、轉錄、信心判斷後接續既有文字查詢流程。"""
+    _t_voice_start = time.monotonic()
+    try:
+        _t_download_start = time.monotonic()
+        content = line_bot_api.get_message_content(message_id)
+        audio_bytes = content.content
+        print(f"[耗時] 語音下載 {time.monotonic() - _t_download_start:.2f}s（{len(audio_bytes)} bytes）", flush=True)
+
+        if len(audio_bytes) > MAX_VOICE_AUDIO_BYTES:
+            safe_push_message(user_id, TextSendMessage(
+                text="⚠️ 語音檔案過長，請縮短後再試，或改用文字輸入。"
+            ), "voice too large reply")
+            print(f"[語音查詢] 檔案過大（{len(audio_bytes)} bytes），未進轉錄：{user_id}", flush=True)
+            return
+
+        _t_transcribe_start = time.monotonic()
+        result = transcribe_voice_query(audio_bytes)
+        print(f"[耗時] 語音轉錄 {time.monotonic() - _t_transcribe_start:.2f}s（confidence={result['confidence']}）", flush=True)
+
+        if result["confidence"] == "low" or not result["transcript"]:
+            safe_push_message(user_id, TextSendMessage(
+                text="🎤 抱歉，沒有聽清楚，請用文字輸入你的查詢。"
+            ), "voice low confidence reply")
+            print(f"[語音查詢] 信心不足，未進查詢流程：{user_id}", flush=True)
+            return
+
+        transcript = result["transcript"]
+        print(
+            f"[語音查詢] 轉錄成功（confidence={result['confidence']}）：{transcript}"
+            f"｜[耗時] 語音處理總計 {time.monotonic() - _t_voice_start:.2f}s",
+            flush=True,
+        )
+        process_and_reply(
+            user_id, transcript, mark_as_read_token,
+            reply_prefix=f"🎤 語音辨識結果：「{transcript}」",
+        )
+    except Exception as e:
+        log_unhandled_exception("process_voice_and_reply", e)
+        safe_push_message(user_id, TextSendMessage(
+            text="⚠️ 語音處理發生錯誤，請改用文字輸入再試一次。"
+        ), "voice error reply")
+
+
+@handler.add(MessageEvent, message=AudioMessage)
+def handle_audio_message(event):
+    user_id = event.source.user_id
+    mark_as_read_token = extract_mark_as_read_token(event)
+    print(f"[收到語音] {user_id}: message_id={event.message.id}, duration={event.message.duration}ms", flush=True)
+
+    if not safe_reply_message(event.reply_token, TextSendMessage(
+        text="🎤 語音辨識中，請稍候..."
+    ), "voice recognizing reply"):
+        return
+    mark_message_as_read(mark_as_read_token)
+    submit_background_voice_query(user_id, event.message.id, mark_as_read_token)
 
 
 @handler.add(PostbackEvent)
