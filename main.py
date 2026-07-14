@@ -443,7 +443,8 @@ from astro import (
     ts, eph,
     az_to_direction, get_moon_phase_emoji, check_meteor_shower,
     get_astronomical_twilight, get_moon_rise_set, compute_dark_sky_window,
-    get_milky_way_composition, compute_target_windows, get_moon_info,
+    get_milky_way_composition, compute_target_windows,
+    compute_target_windows_for_targets, get_moon_info,
 )
 from weather import wind_kmh_to_beaufort, check_weather_multi, get_7timer_seeing
 from cci import _moon_illumination, compute_cci_for_date
@@ -1215,11 +1216,9 @@ def run_query(user_query, prefetched_intent=None):
     wind_profile = determine_wind_profile(intent, matched_targets)
     is_galaxy_query = any(t.get("type") == "galaxy" for t in matched_targets)
     _t_windows_start = time.monotonic()
-    all_windows = []
-    for target in matched_targets:
-        all_windows.extend(
-            compute_target_windows(observer, target, query_dates, dark_windows_by_date)
-        )
+    all_windows = compute_target_windows_for_targets(
+        observer, matched_targets, query_dates, dark_windows_by_date
+    )
     print(f"[耗時] compute_target_windows（{len(matched_targets)} 個標的）{time.monotonic() - _t_windows_start:.2f}s", flush=True)
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
     _t_unsupported_start = time.monotonic()
@@ -1458,11 +1457,9 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
         observer = wgs84.latlon(lat, lon)
         moon_info = get_moon_info(observer, query_dates)
         dark_windows_by_date = {m["date"]: m["dark_windows"] for m in moon_info}
-        all_windows = []
-        for target in matched_targets:
-            all_windows.extend(
-                compute_target_windows(observer, target, query_dates, dark_windows_by_date)
-            )
+        all_windows = compute_target_windows_for_targets(
+            observer, matched_targets, query_dates, dark_windows_by_date
+        )
         if include_seeing:
             with ThreadPoolExecutor(max_workers=2) as pool:
                 weather_future = pool.submit(check_weather_multi, lat, lon, query_dates)

@@ -236,69 +236,89 @@ def get_milky_way_composition(observer, query_date, dark_windows):
 
 # ── 原有計算邏輯 ───────────────────────────────────────────────
 
-def compute_target_windows(observer, target, query_dates, dark_windows_by_date=None):
-    star = Star(ra_hours=target["ra_hours"], dec_degrees=target["dec_degrees"])
-    windows = []
+def _best_target_windows_at_times(observer_vector, targets, scan_times, in_dark_window):
+    if not targets or not scan_times:
+        return [None] * len(targets)
+    stars = Star(
+        ra_hours=[target["ra_hours"] for target in targets],
+        dec_degrees=[target["dec_degrees"] for target in targets],
+    )
+    best_windows = [None] * len(targets)
+    for dt_tst in scan_times:
+        t = ts.from_datetime(dt_tst.astimezone(timezone.utc))
+        apparent = observer_vector.at(t).observe(stars).apparent()
+        altitudes, azimuths, _ = apparent.altaz()
+        for index, target in enumerate(targets):
+            alt_deg = float(altitudes.degrees[index])
+            if target.get("min_alt", 10) <= alt_deg <= target.get("max_alt", 80):
+                best = best_windows[index]
+                if best is None or alt_deg > best["alt_deg"]:
+                    best_windows[index] = {
+                        "target_name": target["name"],
+                        "target_type": target["type"],
+                        "datetime_tst": dt_tst,
+                        "alt_deg": round(alt_deg, 1),
+                        "az_deg": round(float(azimuths.degrees[index]), 1),
+                        "in_dark_window": in_dark_window,
+                    }
+    return best_windows
+
+
+def compute_target_windows_for_targets(observer, targets, query_dates, dark_windows_by_date=None):
+    if not targets:
+        return []
+    observer_vector = eph["earth"] + observer
+    windows_by_target = [[] for _ in targets]
     tz_tst = timezone(timedelta(hours=8))
     for d in query_dates:
-        if dark_windows_by_date and d in dark_windows_by_date:
-            day_windows = dark_windows_by_date[d]
-        else:
-            day_windows = None
-
-        best_for_day = None
-
-        # ── 主要掃描：在暗空窗口內 ─────────────────────────────
-        if day_windows:
-            scan_times = []
-            for (win_start, win_end) in day_windows:
-                current = win_start
-                while current <= win_end:
-                    scan_times.append(current)
-                    current += timedelta(minutes=10)
-            for dt_tst in scan_times:
-                dt_utc = dt_tst.astimezone(timezone.utc)
-                t = ts.from_datetime(dt_utc)
-                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
-                alt, az, _ = apparent.altaz()
-                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
-                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
-                        best_for_day = {
-                            "target_name":  target["name"],
-                            "target_type":  target["type"],
-                            "datetime_tst": dt_tst,
-                            "alt_deg":      round(alt.degrees, 1),
-                            "az_deg":       round(az.degrees, 1),
-                            "in_dark_window": True,
-                        }
-
-        # ── 備用掃描：整夜 18:00–06:00，in_dark_window=False ──
-        # 觸發條件：(a) 無暗空資料，(b) 暗空窗口為空（月光干擾），
-        #           (c) 暗空窗口存在但目標在窗口內仰角不足（如夏至晚落標的）
-        if best_for_day is None:
+        day_windows = (
+            dark_windows_by_date[d]
+            if dark_windows_by_date and d in dark_windows_by_date
+            else None
+        )
+        scan_times = []
+        for win_start, win_end in day_windows or []:
+            current = win_start
+            while current <= win_end:
+                scan_times.append(current)
+                current += timedelta(minutes=10)
+        best_for_day = _best_target_windows_at_times(
+            observer_vector,
+            targets,
+            scan_times,
+            True,
+        )
+        missing_indices = [
+            index for index, best in enumerate(best_for_day) if best is None
+        ]
+        if missing_indices:
             fallback_times = [
-                datetime(d.year, d.month, d.day, 18, 0, tzinfo=tz_tst) + timedelta(minutes=mo)
-                for mo in range(0, 12 * 60, 10)   # 18:00 → 06:00+1day
+                datetime(d.year, d.month, d.day, 18, 0, tzinfo=tz_tst)
+                + timedelta(minutes=minutes)
+                for minutes in range(0, 12 * 60, 10)
             ]
-            for dt_tst in fallback_times:
-                dt_utc = dt_tst.astimezone(timezone.utc)
-                t = ts.from_datetime(dt_utc)
-                apparent = (eph['earth'] + observer).at(t).observe(star).apparent()
-                alt, az, _ = apparent.altaz()
-                if target.get("min_alt", 10) <= alt.degrees <= target.get("max_alt", 80):
-                    if best_for_day is None or alt.degrees > best_for_day["alt_deg"]:
-                        best_for_day = {
-                            "target_name":  target["name"],
-                            "target_type":  target["type"],
-                            "datetime_tst": dt_tst,
-                            "alt_deg":      round(alt.degrees, 1),
-                            "az_deg":       round(az.degrees, 1),
-                            "in_dark_window": False,
-                        }
+            missing_targets = [targets[index] for index in missing_indices]
+            fallback_best = _best_target_windows_at_times(
+                observer_vector,
+                missing_targets,
+                fallback_times,
+                False,
+            )
+            for missing_index, best in zip(missing_indices, fallback_best):
+                best_for_day[missing_index] = best
+        for index, best in enumerate(best_for_day):
+            if best:
+                windows_by_target[index].append(best)
+    return [window for target_windows in windows_by_target for window in target_windows]
 
-        if best_for_day:
-            windows.append(best_for_day)
-    return windows
+
+def compute_target_windows(observer, target, query_dates, dark_windows_by_date=None):
+    return compute_target_windows_for_targets(
+        observer,
+        [target],
+        query_dates,
+        dark_windows_by_date,
+    )
 
 
 def get_moon_info(observer, query_dates):
@@ -325,4 +345,3 @@ def get_moon_info(observer, query_dates):
             "dark_window_desc":   dark_desc,
         })
     return results
-
