@@ -28,9 +28,11 @@ Phase 3A (出勤決策引擎) is complete. All three hard exit gates — CCI, lo
 
 The project is now in Phase 3B: 規劃 UX 與資料營運. Current build order per `ROADMAP.md`:
 
-1. User state 持久化儲存 — technical debt flagged as highest priority in the 2026-06-10 architecture review, still unresolved. `user_state` / `user_pending_location_query` / `user_last_query` / `user_wish_text` in `main.py` are plain in-memory dicts; a Render restart or redeploy silently wipes any in-progress conversation state.
-2. 回覆速度優化（P90 < 15 秒，現況 30–60 秒）
+1. ✅ User state 持久化儲存 — done 2026-07-14 (`state_store.py`). Do not re-propose this as upcoming work. Note: the specific "reply with coordinates via LINE chat after a restart" flow has logic + unit test coverage but has not itself been exercised end-to-end over a live LINE conversation — the user's actual workflow edits the "自定義地點" Sheet directly instead of replying to the bot's coordinate prompt. This is not a Phase 3B #1 blocker, just an open verification gap worth knowing about.
+2. 回覆速度優化（P90 < 15 秒，現況 30–60 秒）— now the top priority.
 3. See the Phase 3B table in `ROADMAP.md` for the full ordered list after this: location DB enrichment, fallback locations, multi-night comparison, gear tips, location wishlist review workflow, cloud-sea/fog mode, sun/moon/planet scenes, 15-day calendar upgrade, voice input, comet live coordinates, Meteoblue seeing evaluation, IMO live ZHR, Southern Cross constraint.
+
+Two production bugs were also found and fixed alongside #1 on 2026-07-14 (see `CHANGELOG.md`): custom locations added by manually editing the Sheet weren't picked up by an already-running process (fixed with a throttled reload), and `init_sheets()` threw a `NameError` on every single boot due to an import-ordering bug, which had been silently self-healing via query-triggered reconnect and masking the real failure. Both confirmed fixed live.
 
 Do not revive the older priority order that treated Clear Outside, Meteoblue, JPL Horizons, drones, or restricted-area data as immediate core work. Meteoblue and JPL Horizons/MPC are now scheduled (Phase 3B #12 and #11) but not urgent; Clear Outside, drones, and restricted-area data remain deferred or dropped per `ROADMAP.md`.
 

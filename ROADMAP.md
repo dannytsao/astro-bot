@@ -287,3 +287,6 @@ Phase 3A 的 MAU 與查詢滿意率是 developer review index，不是 3A → 3B
 | 2026-06-21 | TARGET_LIBRARY 擴充至完整 Messier 目錄（M1–M110，約 110 天體），加入別名系統 |
 | 2026-06-21 | 未命中目標固定格式回覆 + 自動寫入 Google Sheets 反饋（A1+A2 方案） |
 | 2026-06-21 | 夏季低仰角標的觀測窗口修復：compute_target_windows() 加入備用掃描，修正黃金時段誤報 |
+| 2026-07-14 | User State 持久化儲存（Phase 3B #1）：`state_store.py` 把補座標／許願／15天日曆等待狀態寫回 Google Sheets，Render 重啟不再清空進行中對話；pytest 82 通過、Render 開機當下 `/healthz` 即顯示 `google_sheets_connected:true`（非查詢觸發重連補救）。註：實際用戶操作習慣是手動編輯 Sheet 而非在 LINE 對話中回覆座標，因此「補座標對話流程本身跨重啟恢復」這個端對端情境尚未被真實 LINE 對話走過，僅有邏輯與單元測試覆蓋 |
+| 2026-07-14 | 修復：自定義地點 Sheet 手動編輯後不生效——`load_custom_locations()` 原本只在啟動時跑一次；新增 `maybe_reload_custom_locations()` 節流重新載入（最多每 5 分鐘），並修正實作過程中發現的 `time.monotonic()` 哨兵值 bug |
+| 2026-07-14 | 修復：`init_sheets()` 啟動時 100% NameError（`state_store` import 順序在其首次使用之後），導致 Google Sheets 連線在開機當下必定失敗，靠查詢觸發的重連補救掩蓋了問題；已修正 import 順序並以使用者實際地點「南橫啞口」完成真實 LINE 對話測試確認 |
