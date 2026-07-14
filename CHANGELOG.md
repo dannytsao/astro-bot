@@ -1,5 +1,17 @@
 # CHANGELOG
 
+## 2026-07-14（Phase 3B #3 Day 2：語音轉錄單元測試，準備部署）
+
+### 新增
+
+- `tests/test_voice_transcription.py`（10 個測試）：`transcribe_voice_query()` 的高/低信心判斷、空逐字稿強制降級、非法信心值防禦性夾值、JSON 格式錯誤重試、兩次皆失敗安全降級、非物件 JSON（如純陣列）觸發重試、音訊 base64 編碼正確性、`MAX_VOICE_AUDIO_BYTES`／`VoiceTranscriptionError` 基本檢查
+
+### 驗證
+
+- `python3 -m pytest tests/ -q`：92 passed（82 既有 + 10 新增，Day 1 的手動驗證腳本已正式轉為 pytest）
+- `py_compile` 全模組通過
+- 待辦：push 後需請使用者用真實 LINE 語音訊息實測，確認 OpenRouter `input_audio` 的 `format` 欄位（目前寫 `"mp4"`）是否正確——這是唯一沒辦法在本地驗證的環節
+
 ## 2026-07-14（Phase 3B #3 Day 1：語音輸入核心邏輯，尚未部署）
 
 ### 新增
