@@ -6,6 +6,7 @@
 - 根因是 `process_and_reply()` 已先正規化確認後的 intent 並消耗一次性 `_confirmed_location`，`run_query()` 隨後又對同一 intent 重複正規化，因原查詢仍含錯字而再次觸發模糊候選
 - `run_query()` 現在直接使用呼叫端已正規化的 prefetched intent；只有未提供 intent 的直接呼叫才自行解析，避免重複正規化與確認循環
 - 新增 failing-first 回歸測試，確認已正規化的確認 intent 會直接進入計算階段，不再呼叫 `normalize_intent()`
+- Render 部署版本 `7cf187a06ec4` health checks 全綠；使用者以真實 LINE 重測後確認「是，使用這個地點」會正確接續使用阿里山完成計算，Phase 3B #4 可結案
 
 ## 2026-07-14（Phase 3B #4 強化：安全模糊地點候選）
 
