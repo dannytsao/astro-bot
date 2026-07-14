@@ -14,7 +14,7 @@
 - `py_compile` 六個 production 模組與 `git diff --check` 通過
 - 117 標的 benchmark：暗空窗口 7.746 秒降至 0.173 秒；整夜 fallback 0.092 秒
 - 本地 `run_query()` 使用路徑：開放探索型 `compute_target_windows` 0.13 秒、完整天文／CCI 路徑 0.21 秒；指定銀河查詢 0.11 秒。外部氣象 API 以固定 fixture 取代，因此此數值不包含正式環境網路與 LLM 延遲
-- Phase 3B #2 是否達到 production P90 < 15 秒，需部署後以真實 LINE 查詢與 Render `[耗時]` log 確認
+- Production 真實 LINE 開放探索查詢「7/17 南橫啞口適合拍星嗎」驗證通過：意圖解析 1.37 秒、117 標的 `compute_target_windows` 0.99 秒、氣象與視寧度 1.06 秒、`run_query` 2.64 秒、`generate_reply` 4.98 秒，完整回覆總計 9.95 秒。Phase 3B #2 功能完成；這是一筆代表性實測，統計上的 P90 仍需累積多筆 production 查詢持續追蹤
 
 ## 2026-07-14（開發方向調整：自定義地點別名支援正式列為重要改善方案）
 
