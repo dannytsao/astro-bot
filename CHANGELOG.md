@@ -1,5 +1,12 @@
 # CHANGELOG
 
+## 2026-07-14（修復：確認模糊地點後重複要求確認）
+
+- 修正使用者點選「是，使用這個地點」後，再次收到相同地點確認提示、未接續計算的 production bug
+- 根因是 `process_and_reply()` 已先正規化確認後的 intent 並消耗一次性 `_confirmed_location`，`run_query()` 隨後又對同一 intent 重複正規化，因原查詢仍含錯字而再次觸發模糊候選
+- `run_query()` 現在直接使用呼叫端已正規化的 prefetched intent；只有未提供 intent 的直接呼叫才自行解析，避免重複正規化與確認循環
+- 新增 failing-first 回歸測試，確認已正規化的確認 intent 會直接進入計算階段，不再呼叫 `normalize_intent()`
+
 ## 2026-07-14（Phase 3B #4 強化：安全模糊地點候選）
 
 - 保留正式名稱與 `aliases` 精確命中為第一優先；只有精確比對失敗時才計算字元相似度，避免破壞既有 canonical／別名行為

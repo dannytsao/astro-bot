@@ -1,5 +1,7 @@
 from types import SimpleNamespace
 
+import pytest
+
 import main
 
 
@@ -47,6 +49,35 @@ class TestLocationSuggestion:
 
         assert normalized["location_name"] == "阿里山"
         assert "_confirmed_location" not in normalized
+
+
+def test_run_query_uses_already_normalized_confirmed_intent(monkeypatch):
+    class CalculationStarted(RuntimeError):
+        pass
+
+    confirmed_intent = {
+        "location_name": "阿里山",
+        "lat": None,
+        "lon": None,
+        "date_start": "2026-07-20",
+        "date_end": "2026-07-20",
+        "targets": ["銀河核心"],
+        "_confirmed_location": "阿里山",
+    }
+    normalized_intent = main.normalize_intent(confirmed_intent, "今晚阿裏山適合拍銀河嗎")
+    monkeypatch.setattr(
+        main,
+        "normalize_intent",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("run_query 不可重複正規化")),
+    )
+    monkeypatch.setattr(
+        main.wgs84,
+        "latlon",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(CalculationStarted()),
+    )
+
+    with pytest.raises(CalculationStarted):
+        main.run_query("今晚阿裏山適合拍銀河嗎", prefetched_intent=normalized_intent)
 
 
 def test_unconfirmed_suggestion_does_not_run_query(monkeypatch):

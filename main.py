@@ -1314,8 +1314,8 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
 
 def run_query(user_query, prefetched_intent=None):
     _t_normalize_start = time.monotonic()
-    intent    = normalize_intent(prefetched_intent, user_query) if prefetched_intent else parse_intent(user_query)
-    print(f"[耗時] normalize_intent {time.monotonic() - _t_normalize_start:.2f}s", flush=True)
+    intent = prefetched_intent if prefetched_intent is not None else parse_intent(user_query)
+    print(f"[耗時] prepare_intent {time.monotonic() - _t_normalize_start:.2f}s", flush=True)
     observer  = wgs84.latlon(intent["lat"], intent["lon"])
     date_start = date.fromisoformat(intent["date_start"])
     date_end   = date.fromisoformat(intent["date_end"])
