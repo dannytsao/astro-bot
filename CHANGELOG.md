@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-14（Phase 3B #2 起步：氣象/視寧度平行查詢 + 耗時記錄）
+
+### 改進
+
+- **`run_query()` 平行查詢 Open-Meteo 與 7Timer**：兩者互不依賴（都只需要 lat/lon/query_dates），過去是序列呼叫，改用 `ThreadPoolExecutor(max_workers=2)` 平行送出。與比較模式（`main.py` 既有）用的是同一手法，非新嘗試
+- **`rank_location_candidate()` 同步套用**：`include_seeing=True`（最佳地點排名精排階段）時比照平行化；`include_seeing=False`（快速篩選階段）維持原本單一呼叫，不加無謂的 threading 開銷
+- **新增 `[耗時]` 系列 log**：`process_and_reply()` 內記錄取得顯示名稱、意圖解析（LLM）、`run_query`（天文計算+氣象+CCI）、`generate_reply`（LLM 生成回覆）、總計耗時；`run_query()` 內另外記錄氣象+視寧度平行查詢本身的耗時。四個成功回覆出口（一般查詢、比較模式、最佳地點排名、座標 fallback）都補上總計耗時 log
+
+### 為什麼沒有「合併兩次 LLM 呼叫」
+
+ROADMAP 原本建議的方向包含合併 `parse_intent()` 與 `generate_reply()`。實際看程式碼後判斷不適合：`generate_reply()` 的 prompt 是由 Python 算好的 CCI、氣象、觀測窗口組成，而這些計算全部依賴 `parse_intent()` 解析出的地點/日期。真的合併成一次 LLM 呼叫，等於要 LLM 自己猜氣象/CCI，直接違反「不猜測」原則。這次先做零準確度風險的部分（平行化 + 記錄耗時），LLM 呼叫數量的問題留到有真實生產環境的耗時數據後再評估（例如 `parse_intent()` 的 system prompt 每次都內嵌全部約 113 個地點清單，是否用較小/較快模型專跑這一步更合理）
+
+### 驗證
+
+- `python3 -m pytest tests/ -q`：82 passed
+- 本地以 mock 過的 `check_weather_multi`/`get_7timer_seeing`（各加 0.3s 延遲）驗證 `run_query()`：平行查詢耗時記錄為 0.30s（等於單一呼叫延遲，而非兩者相加的 0.6s，證實真的平行執行）；且 CCI breakdown 內雲量、視寧度、透明度三個數值都正確反映兩個來源的 mock 資料，沒有資料錯置
+- **待辦**：push 後需觀察 Render 正式環境的 `[耗時]` log，取得真實查詢的各步驟耗時分布，才能判斷下一步優化重點（是 LLM 呼叫、氣象 API、還是 Skyfield 天文計算）
+
 ## 2026-07-14（修復：`init_sheets()` 啟動時必定 NameError，Google Sheets 連線從未真正在啟動時成功過）
 
 ### 問題描述

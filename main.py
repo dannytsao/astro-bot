@@ -1153,8 +1153,14 @@ def run_query(user_query, prefetched_intent=None):
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
     unsupported_info = check_unsupported(user_query, intent)
     cci_profile = determine_cci_profile(intent, matched_targets, showers, unsupported_info)
-    weather     = check_weather_multi(intent["lat"], intent["lon"], query_dates)
-    seeing_data = get_7timer_seeing(intent["lat"], intent["lon"], query_dates)
+    _t_forecast_start = time.monotonic()
+    # Open-Meteo 與 7Timer 互不依賴，平行查詢節省一次序列等待
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        weather_future = pool.submit(check_weather_multi, intent["lat"], intent["lon"], query_dates)
+        seeing_future  = pool.submit(get_7timer_seeing, intent["lat"], intent["lon"], query_dates)
+        weather     = weather_future.result()
+        seeing_data = seeing_future.result()
+    print(f"[耗時] 氣象+視寧度並行查詢 {time.monotonic() - _t_forecast_start:.2f}s", flush=True)
     data_quality = summarize_data_quality(
         intent, query_dates, weather, seeing_data, matched_targets, unmatched_targets
     )
@@ -1384,8 +1390,15 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
             all_windows.extend(
                 compute_target_windows(observer, target, query_dates, dark_windows_by_date)
             )
-        weather = check_weather_multi(lat, lon, query_dates)
-        seeing_data = get_7timer_seeing(lat, lon, query_dates) if include_seeing else {}
+        if include_seeing:
+            with ThreadPoolExecutor(max_workers=2) as pool:
+                weather_future = pool.submit(check_weather_multi, lat, lon, query_dates)
+                seeing_future  = pool.submit(get_7timer_seeing, lat, lon, query_dates)
+                weather     = weather_future.result()
+                seeing_data = seeing_future.result()
+        else:
+            weather = check_weather_multi(lat, lon, query_dates)
+            seeing_data = {}
         best = None
         for m in moon_info:
             d = m["date"]
@@ -2072,7 +2085,9 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
     背景執行緒：執行天文計算後以 push_message 回傳結果。
     reply_token 30 秒過期，長時間計算須改用 push_message。
     """
+    _t_query_start = time.monotonic()
     username = get_display_name(user_id)
+    print(f"[耗時] 取得顯示名稱 {time.monotonic() - _t_query_start:.2f}s", flush=True)
     try:
         if is_best_location_query(text):
             intent_for_check = build_best_location_intent(text)
@@ -2112,10 +2127,12 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
                 quick_reply=make_feedback_quick_reply()
             ), "best location ranking reply")
             mark_message_as_read(mark_as_read_token)
-            print("[回覆] 最佳地點排名完成", flush=True)
+            print(f"[回覆] 最佳地點排名完成｜[耗時] 總計 {time.monotonic() - _t_query_start:.2f}s", flush=True)
             return
 
+        _t_intent_start = time.monotonic()
         intent_for_check = normalize_intent(prefetched_intent, text) if prefetched_intent else parse_intent(text)
+        print(f"[耗時] 意圖解析 {time.monotonic() - _t_intent_start:.2f}s", flush=True)
         scope = check_unsupported(text, intent_for_check)
 
         if scope["has_unsupported"]:
@@ -2179,11 +2196,15 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
                 quick_reply=make_feedback_quick_reply()
             ), "compare reply")
             mark_message_as_read(mark_as_read_token)
-            print("[回覆] 比較模式完成", flush=True)
+            print(f"[回覆] 比較模式完成｜[耗時] 總計 {time.monotonic() - _t_query_start:.2f}s", flush=True)
             return
 
+        _t_run_query_start = time.monotonic()
         result = run_query(text, prefetched_intent=intent_for_check)
+        print(f"[耗時] run_query（天文計算+氣象+CCI）{time.monotonic() - _t_run_query_start:.2f}s", flush=True)
+        _t_reply_start = time.monotonic()
         reply  = generate_reply(result)
+        print(f"[耗時] generate_reply（LLM 生成回覆）{time.monotonic() - _t_reply_start:.2f}s", flush=True)
         reply = f"{format_location_resolution(result['intent'], text)}\n\n{reply}"
         if reply_prefix:
             reply = f"{reply_prefix}\n\n{reply}"
@@ -2206,7 +2227,7 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
                 quick_reply=make_feedback_quick_reply()
             ), "query reply")
         mark_message_as_read(mark_as_read_token)
-        print("[回覆] 完成", flush=True)
+        print(f"[回覆] 完成｜[耗時] 總計 {time.monotonic() - _t_query_start:.2f}s", flush=True)
 
     except LocationResolutionError as e:
         requested_location = e.location_name or extract_location_hint(text) or text
@@ -2242,7 +2263,7 @@ def process_and_reply(user_id, text, mark_as_read_token="", prefetched_intent=No
                 quick_reply=make_feedback_quick_reply()
             ), "query reply after coordinate fallback")
             mark_message_as_read(mark_as_read_token)
-            print("[回覆] 座標 fallback 完成", flush=True)
+            print(f"[回覆] 座標 fallback 完成｜[耗時] 總計 {time.monotonic() - _t_query_start:.2f}s", flush=True)
             return
 
         wish_saved = log_wish(
