@@ -22,6 +22,8 @@
 今晚 外澳 適合拍攝嗎？
 ```
 
+也支援直接傳送語音訊息查詢，Bot 會先顯示辨識出的文字內容，再接續原本的查詢流程；回覆維持文字格式（不提供語音回覆）。辨識信心不足時會請你改用文字輸入，不會用猜測的內容送出查詢。
+
 ---
 
 ## 功能說明（v2 + Phase 3A）
@@ -84,6 +86,7 @@
 
 | 功能 | 說明 |
 | --- | --- |
+| 語音查詢 | 直接傳送語音訊息，Bot 用 Gemini 2.5 Flash（透過 OpenRouter）轉錄成文字後接續既有查詢流程；辨識信心不足時請求改用文字輸入 |
 | 服務選單 | 輸入「選單」或 `/menu` 叫出快捷功能列 |
 | 取消查詢 | 計算中可按「❌ 取消」中止 |
 | 用戶評分 | 每次回覆後顯示 👍 👎 按鈕，記錄氣象準確度 |
@@ -127,7 +130,7 @@
 | --- | --- |
 | 氣象預報範圍 | 僅支援未來 15 天；超出範圍仍顯示天文計算，但無氣象資料 |
 | 微氣候修正 | 尚未建立各地點的歷史預報誤差修正模型；山區微氣候可能與預報有落差 |
-| 回應速度 | 每次查詢約 30–60 秒；正在優化中（Phase 3B 目標 < 15 秒） |
+| 回應速度 | 指定天體查詢已優化至約 10 秒內；開放探索型查詢（未指定天體）因需逐一計算全部標的觀測窗口，仍需 30 秒以上，優化中（Phase 3B 目標 < 15 秒） |
 | 無地點記憶 | 每次查詢都需要輸入地點 |
 | 無主動推播 | 目前只能被動回應，不會主動通知天況好的夜晚（Phase 5 規劃中）|
 
@@ -234,7 +237,8 @@ LINE 訊息（Webhook → Flask）
 | 變數名稱 | 說明 |
 | --- | --- |
 | `OPENROUTER_API_KEY` | OpenRouter API 金鑰 |
-| `OPENROUTER_MODEL` | OpenRouter runtime 模型；Render 有設定時以環境變數為準，未設定時預設 `anthropic/claude-sonnet-4.5` |
+| `OPENROUTER_MODEL` | OpenRouter runtime 模型；Render 有設定時以環境變數為準，未設定時預設 `anthropic/claude-sonnet-4.5`。Production 現行設定為 `google/gemini-2.5-flash`（2026-07-14 起，同時支援語音查詢的音訊輸入） |
+| `OPENROUTER_FALLBACK_MODELS` | 主要模型失敗時依序嘗試的 fallback 清單，逗號分隔；未設定時預設 `openai/gpt-4o-mini` |
 | `OPENROUTER_SITE_URL` | OpenRouter attribution URL，預設 Render service URL |
 | `OPENROUTER_APP_NAME` | OpenRouter attribution app name，預設 `astro-bot` |
 | `ANTHROPIC_API_KEY` | Legacy fallback；若暫時未建立 `OPENROUTER_API_KEY`，可讀取此變數中的 OpenRouter key |
