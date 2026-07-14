@@ -1,5 +1,23 @@
 # CHANGELOG
 
+## 2026-07-14（Phase 3B #2 續：`run_query()` 內部細部耗時記錄）
+
+### 背景
+
+上一版 `[耗時]` log 上線後，取得兩筆真實生產環境數據：「7/17 日月潭銀河機會」run_query 僅 1.49s；「7/17 南橫啞口適合拍星嗎」run_query 高達 22.66s / 25.11s（同一查詢 2 分鐘內重複兩次結果一致，排除節流重新載入是原因——重複時未觸發 `[自定義地點]` 重新載入 log，run_query 仍然慢，證實與這次「自定義地點重新載入」修復無關）。generate_reply 兩次都穩定在 18–20s，暫時排除為變因。
+
+由於 `run_query()` 內天氣/視寧度取得之後的所有計算都是對已取回資料的純運算（CCI 加權、視窗合併等），理論上應在毫秒等級；真正的懷疑對象是天氣查詢之前的 `normalize_intent()`、`get_moon_info()`、`compute_target_windows()`、`check_unsupported()` 這幾步。不用猜的，直接加 log 讓下一次真實查詢自己說話。
+
+### 新增
+
+- `run_query()` 內新增細部 `[耗時]` log：`normalize_intent`、`get_moon_info`、`compute_target_windows`（含比對到的標的數）、`check_unsupported`，搭配既有的「氣象+視寧度並行查詢」共同組成完整的階段耗時鏈
+
+### 驗證
+
+- `python3 -m pytest tests/ -q`：82 passed
+- 純新增 log，無邏輯變更，行為不受影響
+- **待辦**：push 後需請使用者重新測試「南橫啞口」這類會觸發異常耗時的查詢，取得細部耗時 log 才能定位真正原因
+
 ## 2026-07-14（Phase 3B #2 起步：氣象/視寧度平行查詢 + 耗時記錄）
 
 ### 改進

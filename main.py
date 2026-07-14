@@ -1133,25 +1133,33 @@ def check_unsupported(user_query: str, intent: dict) -> dict:
 
 
 def run_query(user_query, prefetched_intent=None):
+    _t_normalize_start = time.monotonic()
     intent    = normalize_intent(prefetched_intent, user_query) if prefetched_intent else parse_intent(user_query)
+    print(f"[耗時] normalize_intent {time.monotonic() - _t_normalize_start:.2f}s", flush=True)
     observer  = wgs84.latlon(intent["lat"], intent["lon"])
     date_start = date.fromisoformat(intent["date_start"])
     date_end   = date.fromisoformat(intent["date_end"])
     query_dates = [date_start + timedelta(days=i)
                    for i in range((date_end - date_start).days + 1)]
+    _t_moon_start = time.monotonic()
     moon_info = get_moon_info(observer, query_dates)
+    print(f"[耗時] get_moon_info {time.monotonic() - _t_moon_start:.2f}s", flush=True)
     dark_windows_by_date = {m["date"]: m["dark_windows"] for m in moon_info}
     matched_targets = match_targets(intent.get("targets", []))
     unmatched_targets = find_unmatched_targets(intent.get("targets", []), matched_targets)
     wind_profile = determine_wind_profile(intent, matched_targets)
     is_galaxy_query = any(t.get("type") == "galaxy" for t in matched_targets)
+    _t_windows_start = time.monotonic()
     all_windows = []
     for target in matched_targets:
         all_windows.extend(
             compute_target_windows(observer, target, query_dates, dark_windows_by_date)
         )
+    print(f"[耗時] compute_target_windows（{len(matched_targets)} 個標的）{time.monotonic() - _t_windows_start:.2f}s", flush=True)
     showers = [s for d in query_dates for s in check_meteor_shower(d)]
+    _t_unsupported_start = time.monotonic()
     unsupported_info = check_unsupported(user_query, intent)
+    print(f"[耗時] check_unsupported {time.monotonic() - _t_unsupported_start:.2f}s", flush=True)
     cci_profile = determine_cci_profile(intent, matched_targets, showers, unsupported_info)
     _t_forecast_start = time.monotonic()
     # Open-Meteo 與 7Timer 互不依賴，平行查詢節省一次序列等待
