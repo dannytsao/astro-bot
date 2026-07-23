@@ -452,8 +452,11 @@ from astro import (
     get_milky_way_composition, compute_target_windows,
     compute_target_windows_for_targets, get_moon_info,
 )
-from weather import wind_kmh_to_beaufort, check_weather_multi, get_7timer_seeing
-from cci import _moon_illumination, compute_cci_for_date
+from weather import (
+    wind_kmh_to_beaufort, check_weather_multi, get_7timer_seeing,
+    aggregate_weather_interval, aggregate_seeing_interval,
+)
+from cci import _moon_illumination, compute_cci_for_date, resolve_observation_interval
 from state_store import init_state_sheet, hydrate_user_state, persist_pending_state, clear_pending_state
 
 DEFAULT_KNOWN_LOCATIONS = {
@@ -1390,13 +1393,36 @@ def run_query(user_query, prefetched_intent=None):
     showers_by_date = {}
     for d in query_dates:
         showers_by_date[d] = check_meteor_shower(d)
+    def _cloud_trend_line(d):
+        hourly = weather.get(d, {}).get("hourly_night") or []
+        if not hourly:
+            return None
+        pts = " ".join(
+            f"{x['time_tst'].strftime('%H')}時{round(x['cloud_cover'])}%"
+            for x in hourly[::2]
+        )
+        return pts
+
+    observation_intervals = {}
     for m in moon_info:
         d = m["date"]
         wins_for_date = [w for w in all_windows if w["datetime_tst"].date() == d]
+        # Go/No-Go 以觀測目標起落區間的氣象為準，而非整夜平均；
+        # 區間無法解析時 fallback 整夜平均（CCI 會標註）
+        iv_start, iv_end, iv_source = resolve_observation_interval(cci_profile, m, wins_for_date)
+        weather_for_cci = aggregate_weather_interval(weather.get(d, {}), iv_start, iv_end) \
+            or weather.get(d, {})
+        seeing_for_cci = aggregate_seeing_interval(seeing_data.get(d, {}), iv_start, iv_end) \
+            or seeing_data.get(d, {})
+        observation_intervals[d] = {
+            "start": iv_start, "end": iv_end, "source": iv_source,
+            "interval_weather_used": weather_for_cci.get("aggregation") == "target_window",
+            "cloud_trend": _cloud_trend_line(d),
+        }
         cci_by_date[d] = compute_cci_for_date(
-            weather.get(d, {}),
+            weather_for_cci,
             m,
-            seeing_data.get(d, {}),
+            seeing_for_cci,
             wins_for_date,
             wind_profile,
             cci_profile=cci_profile,
@@ -1411,6 +1437,7 @@ def run_query(user_query, prefetched_intent=None):
         "showers":     showers,
         "cci_profile": cci_profile,
         "unsupported_info": unsupported_info,
+        "observation_intervals":     observation_intervals,
         "mw_composition_by_date":    mw_composition_by_date,
         "is_galaxy_query":           is_galaxy_query,
         "all_windows_out_of_range":  all_windows_out_of_range,
@@ -1587,15 +1614,23 @@ def rank_location_candidate(name, item, query_dates, matched_targets, wind_profi
         for m in moon_info:
             d = m["date"]
             wins_for_date = [w for w in all_windows if w["datetime_tst"].date() == d]
+            # 排名同樣以目標觀測區間的氣象為準，與單地點 CCI 口徑一致
+            iv_start, iv_end, _ = resolve_observation_interval("default", m, wins_for_date)
+            weather_for_cci = aggregate_weather_interval(weather.get(d, {}), iv_start, iv_end) \
+                or weather.get(d, {})
+            seeing_for_cci = aggregate_seeing_interval(
+                seeing_data.get(d, MISSING_SEEING_DAY), iv_start, iv_end
+            ) or seeing_data.get(d, MISSING_SEEING_DAY)
             cci = compute_cci_for_date(
-                weather.get(d, {}),
+                weather_for_cci,
                 m,
-                seeing_data.get(d, MISSING_SEEING_DAY),
+                seeing_for_cci,
                 wins_for_date,
                 wind_profile,
             )
-            wx = weather.get(d, {})
-            sd = seeing_data.get(d, MISSING_SEEING_DAY)
+            # 排名列顯示的氣象數值與 CCI 使用同一份區間聚合，避免分數與數字對不上
+            wx = weather_for_cci
+            sd = seeing_for_cci
             row = {
                 "name": name,
                 "region": item.get("region", ""),
@@ -1776,6 +1811,7 @@ def generate_reply(result):
     data_quality     = result.get("data_quality", {})
     cci_by_date      = result.get("cci_by_date", {})
     cci_profile      = result.get("cci_profile", "default")
+    obs_intervals    = result.get("observation_intervals", {})
     unsupported_info = result.get("unsupported_info", {})
     matched_targets  = result.get("matched_targets", [])
 
@@ -2094,6 +2130,19 @@ def generate_reply(result):
                 )
     cci_str = json.dumps(cci_list, ensure_ascii=False, indent=2) if cci_list else "無 CCI 資料"
     risk_text = "\n".join(f"- {f}" for f in risk_flags) if risk_flags else "（本次查詢無高風險項目）"
+    obs_interval_lines = []
+    for d in sorted(obs_intervals):
+        iv = obs_intervals[d] or {}
+        s, e = iv.get("start"), iv.get("end")
+        if s and e and iv.get("interval_weather_used"):
+            label = f"觀測區間 {s.strftime('%H:%M')}–{e.strftime('%H:%M')}"
+        else:
+            label = "觀測區間無法解析，氣象為整夜平均"
+        trend = iv.get("cloud_trend")
+        obs_interval_lines.append(
+            f"- {d.strftime('%m/%d')}：{label}" + (f"；逐時雲量 {trend}" if trend else "")
+        )
+    obs_interval_text = "\n".join(obs_interval_lines)
     profile_note_text = "\n".join(all_profile_notes) if all_profile_notes else ""
 
     reply_text = call_openrouter(
@@ -2105,7 +2154,10 @@ def generate_reply(result):
             f"日期：{intent['date_start']} ～ {intent['date_end']}\n"
             f"氣象狀態：{weather_status}\n"
             f"夜間平均雲量：{avg_cloud}%\n"
-            f"夜間平均能見度：{f'{avg_visibility_km} km' if avg_visibility_km >= 0 else 'N/A'}\n"
+            + (f"觀測區間與逐時雲量趨勢（CCI 以觀測區間內的氣象計算；趨勢可用於說明雲量變化，"
+               f"例如入夜多雲、凌晨轉晴，不可自行外推未列出的時段）：\n{obs_interval_text}\n"
+               if obs_interval_text else "")
+            + f"夜間平均能見度：{f'{avg_visibility_km} km' if avg_visibility_km >= 0 else 'N/A'}\n"
             f"夜間平均視寧度（7Timer）：{f'{avg_seeing}/8（1=最佳）' if avg_seeing > 0 else 'N/A'}\n"
             f"夜間平均大氣透明度（7Timer）：{f'{avg_transparency}/8（1=最佳）' if avg_transparency > 0 else 'N/A'}\n\n"
             f"資料品質與缺資料紀錄：\n{data_quality_text}\n\n"

@@ -1,6 +1,63 @@
 # 出勤信心指數（CCI）：純 Python 計算，不依賴 LLM。
 # profile: default | meteor | moonscape | lunar_eclipse | comet_layer1
 import math
+from datetime import datetime, timedelta, timezone
+
+TZ_TST = timezone(timedelta(hours=8))
+
+
+def resolve_observation_interval(cci_profile, moon_day, windows_for_date):
+    """依題材決定當晚 Go/No-Go 判斷所用的觀測時間區間。
+
+    回傳 (start_dt, end_dt, source)；無法解析時回傳 (None, None, None)，
+    呼叫端 fallback 整夜平均（不可猜測原則：解析不到就明講用整夜平均）。
+    source: "target_windows" | "dark_windows" | "moon_up"
+    """
+    d = moon_day.get("date")
+    dark_wins = moon_day.get("dark_windows") or []
+    night_start = datetime(d.year, d.month, d.day, 18, 0, tzinfo=TZ_TST) if d else None
+    night_end = night_start + timedelta(hours=12) if night_start else None
+
+    if cci_profile in ("moonscape", "lunar_eclipse"):
+        # 月景／月蝕：月亮在天上的區間 ∩ 夜間（18:00–06:00）
+        if night_start is None or moon_day.get("moon_below_all_night"):
+            return None, None, None
+        if moon_day.get("moon_above_all_night"):
+            return night_start, night_end, "moon_up"
+        rise, moonset = moon_day.get("moonrise"), moon_day.get("moonset")
+        if rise and moonset:
+            segs = [(rise, moonset)] if rise < moonset else \
+                   [(night_start, moonset), (rise, night_end)]
+        elif rise:
+            segs = [(rise, night_end)]
+        elif moonset:
+            segs = [(night_start, moonset)]
+        else:
+            return None, None, None
+        best = None
+        for s, e in segs:
+            s2, e2 = max(s, night_start), min(e, night_end)
+            if e2 > s2 and (best is None or (e2 - s2) > (best[1] - best[0])):
+                best = (s2, e2)
+        if best:
+            return best[0], best[1], "moon_up"
+        return None, None, None
+
+    if cci_profile in ("meteor", "comet_layer1"):
+        # 流星雨／彗星第一層：暗空窗口邊界
+        if dark_wins:
+            return dark_wins[0][0], dark_wins[-1][1], "dark_windows"
+        return None, None, None
+
+    # default／深空：當晚目標可見區間聯集邊界；無目標窗口時退回暗空窗口
+    starts = [w["window_start_tst"] for w in windows_for_date if w.get("window_start_tst")]
+    ends = [w["window_end_tst"] for w in windows_for_date if w.get("window_end_tst")]
+    if starts and ends:
+        return min(starts), max(ends), "target_windows"
+    if dark_wins:
+        return dark_wins[0][0], dark_wins[-1][1], "dark_windows"
+    return None, None, None
+
 
 # ── 出勤信心指數（CCI） ────────────────────────────────────────
 
@@ -40,17 +97,35 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
     else:  # default
         W = {"cloud":0.30,"dark_window":0.22,"seeing":0.13,"transparency":0.08,"target":0.10,"dew":0.05,"wind":0.12}
 
-    # 1. 雲量
+    # 1. 雲量（以觀測區間聚合為準；區間無法解析時 fallback 整夜平均）
     weather_ok = weather_day.get("data_status") == "ok"
     cloud = weather_day.get("cloud_cover", -1)
+    interval_based = weather_day.get("aggregation") == "target_window"
+    if interval_based:
+        ws, we = weather_day.get("window_start"), weather_day.get("window_end")
+        window_label = f"{ws.strftime('%H:%M')}–{we.strftime('%H:%M')} 觀測區間" if ws and we else "觀測區間"
+    else:
+        window_label = "整夜平均"
     if not weather_ok or cloud < 0:
         cloud_score, cloud_raw = 0, "氣象資料缺失"
         completeness_flags.append("weather_missing")
-    elif cloud <= 20:  cloud_score, cloud_raw = 100, f"雲量 {cloud}%"
-    elif cloud <= 40:  cloud_score, cloud_raw = 80,  f"雲量 {cloud}%"
-    elif cloud <= 60:  cloud_score, cloud_raw = 40,  f"雲量 {cloud}%"
-    elif cloud <= 80:  cloud_score, cloud_raw = 15,  f"雲量 {cloud}%"
-    else:              cloud_score, cloud_raw = 0,   f"雲量 {cloud}%"
+    elif cloud <= 20:  cloud_score = 100
+    elif cloud <= 40:  cloud_score = 80
+    elif cloud <= 60:  cloud_score = 40
+    elif cloud <= 80:  cloud_score = 15
+    else:              cloud_score = 0
+    if weather_ok and cloud >= 0:
+        cloud_max = weather_day.get("cloud_cover_max", -1)
+        cloud_raw = f"雲量 {cloud}%（{window_label}）"
+        if cloud_max >= 0 and interval_based:
+            cloud_raw = f"雲量 {cloud}%（{window_label}平均，峰值 {cloud_max}%）"
+        if cloud_max >= 60 and (cloud_max - cloud) >= 30:
+            profile_notes.append(
+                f"⚠️ 觀測區間內雲量起伏大（平均 {cloud}%、峰值 {cloud_max}%），"
+                f"部分時段可能被雲層蓋掉，建議預留等雲空檔"
+            )
+        if not interval_based:
+            profile_notes.append("ℹ️ 氣象以整夜平均計算（觀測區間無法解析或逐時資料缺失）")
     breakdown["cloud"] = {"score": cloud_score, "raw": cloud_raw, "weight": W["cloud"]}
 
     # 2. 有效暗空窗口 / 月光亮度（依 profile 調整語意）
@@ -173,19 +248,24 @@ def compute_cci_for_date(weather_day, moon_info_day, seeing_day, windows_for_dat
         else:         target_score, target_raw = 0,   "目標不可見"
     breakdown["target"] = {"score": target_score, "raw": target_raw, "weight": W["target"]}
 
-    # 6. 結露 / 起霧風險
+    # 6. 結露 / 起霧風險（優先用區間內最差小時的 T−Td，物理上比平均值準確）
     if not weather_ok:
         dew_score, dew_raw = 80, "結露資料缺失"
     else:
         temp   = weather_day.get("temp_c")
         dew_pt = weather_day.get("dew_point_c")
-        if temp is None or dew_pt is None:
-            dew_score, dew_raw = 80, "結露資料缺失"
+        min_diff = weather_day.get("min_temp_dew_diff")
+        if min_diff is not None and min_diff > -900:
+            diff, diff_label = min_diff, "最差小時 "
+        elif temp is None or dew_pt is None:
+            diff, diff_label = None, ""
         else:
-            diff = temp - dew_pt
-            if diff >= 3.0:   dew_score, dew_raw = 100, f"T−Td={diff:.1f}°C（安全）"
-            elif diff >= 1.5: dew_score, dew_raw = 50,  f"T−Td={diff:.1f}°C（注意）"
-            else:             dew_score, dew_raw = 0,   f"T−Td={diff:.1f}°C（高風險）"
+            diff, diff_label = temp - dew_pt, ""
+        if diff is None:
+            dew_score, dew_raw = 80, "結露資料缺失"
+        elif diff >= 3.0: dew_score, dew_raw = 100, f"{diff_label}T−Td={diff:.1f}°C（安全）"
+        elif diff >= 1.5: dew_score, dew_raw = 50,  f"{diff_label}T−Td={diff:.1f}°C（注意）"
+        else:             dew_score, dew_raw = 0,   f"{diff_label}T−Td={diff:.1f}°C（高風險）"
     breakdown["dew"] = {"score": dew_score, "raw": dew_raw, "weight": W["dew"]}
 
     # 7. 風速穩定性

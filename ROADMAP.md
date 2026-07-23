@@ -295,3 +295,4 @@ Phase 3A 的 MAU 與查詢滿意率是 developer review index，不是 3A → 3B
 | 2026-07-14 | 修復：自定義地點 Sheet 手動編輯後不生效——`load_custom_locations()` 原本只在啟動時跑一次；新增 `maybe_reload_custom_locations()` 節流重新載入（最多每 5 分鐘），並修正實作過程中發現的 `time.monotonic()` 哨兵值 bug |
 | 2026-07-14 | 自定義地點別名支援（Phase 3B #4）：Google Sheets「自定義地點」新增「別名」欄，可用逗號、中文逗號、頓號或換行維護同音／常用別名；重載後精確解析回 canonical 名稱，approved 地點保護規則維持不變 |
 | 2026-07-14 | 修復：`init_sheets()` 啟動時 100% NameError（`state_store` import 順序在其首次使用之後），導致 Google Sheets 連線在開機當下必定失敗，靠查詢觸發的重連補救掩蓋了問題；已修正 import 順序並以使用者實際地點「南橫啞口」完成真實 LINE 對話測試確認 |
+| 2026-07-23 | Go/No-Go 準確度升級：CCI 改以觀測目標起落區間（依題材：目標可見區間／暗空窗口／月亮在天區間）的氣象聚合為準，取代固定 20:00–02:00 整夜平均；雲量=區間平均+峰值風險旗幟、結露=最差小時 T−Td、風速=區間最大；單地點查詢與最佳地點排名同步改用；回覆 context 加入逐時雲量趨勢。區間無法解析時 fallback 整夜平均並明確標註 |

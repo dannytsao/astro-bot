@@ -1,5 +1,25 @@
 # CHANGELOG
 
+## 2026-07-23（Go/No-Go 準確度：CCI 改以觀測目標起落區間的氣象為準）
+
+### 根因
+
+- 原本 `check_weather_multi()` 把整夜壓成固定 20:00–02:00 七小時的平均值，03:00–06:00 完全不採計；7Timer 視寧度亦同
+- CCI 的雲量、結露、風速、視寧度、透明度分數全部來自這個固定區間平均，與目標實際起落時間無關；冬春季銀河核心 02:00–05:00 才升起，Go/No-Go 卻是用目標不在天上的時段判斷；台灣山區入夜多雲、凌晨轉晴的天氣型態會被平均值誤判為 No-Go
+
+### 修改
+
+- `weather.py`：Open-Meteo 抓取範圍擴為當日 18:00 → 隔日 06:00（end_date +1 天，超出預報範圍時自動退回原範圍重試）；每日結果新增 `hourly_night` 逐小時資料、`cloud_cover_max`、`min_temp_dew_diff`；新增 `aggregate_weather_interval()`（雲量=區間平均+峰值、結露=區間內最差小時 T−Td、風速=區間最大）與 `aggregate_seeing_interval()`（7Timer 3 小時時點以 [t, t+3h) 與區間交集納入）
+- `astro.py`：`_best_target_windows_at_times()` 除最佳時刻外同步記錄每目標當晚可見區間 `window_start_tst` / `window_end_tst`（暗空與 18:00–06:00 fallback 掃描皆適用）
+- `cci.py`：新增 `resolve_observation_interval()` 依題材決定判斷區間——default/深空=目標可見區間聯集邊界（無窗口退暗空窗口）、meteor/comet_layer1=暗空窗口邊界、moonscape/lunar_eclipse=月亮在天區間∩夜間（雙段取重疊較長者）；雲量 breakdown 標示聚合區間與峰值，峰值與平均差 ≥30 且峰值 ≥60 時輸出「雲量起伏大」風險旗幟；結露評分改用區間內最差小時 T−Td；區間無法解析時 fallback 整夜平均並明確標註（不猜測原則）
+- `main.py`：`run_query()` 與 `rank_location_candidate()`（今晚/週末最佳地點排名）都改用區間聚合結果餵 `compute_cci_for_date`，排名列顯示數值與 CCI 同一口徑；`generate_reply` context 新增每晚觀測區間與逐時雲量趨勢（隔 2 小時取樣），並明確指示 LLM 不可外推未列出的時段
+
+### 驗證
+
+- 新增 `tests/test_interval_aggregation.py` 27 個測試：區間聚合數值正確性（平均/峰值/最差小時 T−Td/最大風速/短區間對齊整點）、無資料與無交集 fallback、各 profile 區間解析、窗口 span、CCI 區間標示與風險旗幟、同晚「整夜平均 60% vs 區間 10%」Go/No-Go 分數翻轉、Open-Meteo 逐小時涵蓋 18:00–06:00
+- 完整 pytest：133 passed（106 既有 + 27 新增）；`py_compile` 六模組通過；`git diff --check` 通過
+- 尚未經真實 LINE 驗證；部署後需以實際查詢確認回覆中的區間標示與雲量趨勢描述
+
 ## 2026-07-14（修復：確認模糊地點後重複要求確認）
 
 - 修正使用者點選「是，使用這個地點」後，再次收到相同地點確認提示、未接續計算的 production bug

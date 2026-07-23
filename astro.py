@@ -244,6 +244,8 @@ def _best_target_windows_at_times(observer_vector, targets, scan_times, in_dark_
         dec_degrees=[target["dec_degrees"] for target in targets],
     )
     best_windows = [None] * len(targets)
+    # 每個目標當晚的可見區間（首次／最後一個符合仰角限制的掃描時間）
+    visible_spans = [[None, None] for _ in targets]
     for dt_tst in scan_times:
         t = ts.from_datetime(dt_tst.astimezone(timezone.utc))
         apparent = observer_vector.at(t).observe(stars).apparent()
@@ -251,6 +253,11 @@ def _best_target_windows_at_times(observer_vector, targets, scan_times, in_dark_
         for index, target in enumerate(targets):
             alt_deg = float(altitudes.degrees[index])
             if target.get("min_alt", 10) <= alt_deg <= target.get("max_alt", 80):
+                span = visible_spans[index]
+                if span[0] is None or dt_tst < span[0]:
+                    span[0] = dt_tst
+                if span[1] is None or dt_tst > span[1]:
+                    span[1] = dt_tst
                 best = best_windows[index]
                 if best is None or alt_deg > best["alt_deg"]:
                     best_windows[index] = {
@@ -261,6 +268,10 @@ def _best_target_windows_at_times(observer_vector, targets, scan_times, in_dark_
                         "az_deg": round(float(azimuths.degrees[index]), 1),
                         "in_dark_window": in_dark_window,
                     }
+    for index, best in enumerate(best_windows):
+        if best is not None:
+            best["window_start_tst"] = visible_spans[index][0]
+            best["window_end_tst"] = visible_spans[index][1]
     return best_windows
 
 
